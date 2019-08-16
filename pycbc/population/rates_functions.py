@@ -68,6 +68,7 @@ def save_bkg_falloff(fname_statmap, fname_bank, path, rhomin, lo_mchirp, hi_mchi
                File name of the template bank
         path: string
                Destination where txt file is saved
+               **FIXME:** Not being used, and unclear what txt file referring to?
         rhomin: float
                Minimum value of SNR threhold (will need including ifar)
         lo_mchirp: float

@@ -486,3 +486,26 @@ def make_singles_plot(workflow, trig_files, bank_file, veto_file, veto_name,
             workflow += node
             files += node.output_files
     return files
+
+def make_population_hdf(workflow, statmap_file, inj_file, hdfbank_file, out_dir, tags=None):
+    tags = [] if tags is None else tags
+    makedir(out_dir)
+    node = PlotExecutable(workflow.cp, 'population_rates', ifos=workflow.ifos,
+                          out_dir=out_dir, tags=tags).create_node()
+    node.add_input_opt('--statmap-file', statmap_file)
+    #node.add_input_list_opt('--sim-files', inj_file)
+    node.add_input_opt('--sim-files', inj_file)
+    node.add_input_opt('--bank-file', hdfbank_file)
+    node.new_output_file_opt(workflow.analysis_time, '.hdf', '--output-file')
+    workflow += node
+    return node.output_files[0]
+
+def make_population_rate_plot(workflow, rate_posterior_samples, out_dir, tags=None):
+    tags = [] if tags is None else tags
+    makedir(out_dir)
+    node = PlotExecutable(workflow.cp, 'population_rates_plot', ifos=workflow.ifos,
+                          out_dir=out_dir, tags=tags).create_node()
+    node.add_input_opt('--posterior-samples', rate_posterior_samples)
+    node.new_output_file_opt(workflow.analysis_time, '.png', '--output-file')
+    workflow += node
+    return node.output_files[0]

@@ -32,7 +32,7 @@ __date__ = "31.10.2017"
 
 import logging
 import argparse
-import pycbc.version
+import pycbc.version, pycbc
 
 import h5py
 import numpy as np
@@ -45,6 +45,8 @@ from numpy import logaddexp, log, newaxis, expm1
 # Parse command line
 parser = argparse.ArgumentParser(description = "Estimate rates for flat in "
                                      "log and power-law mass distribution.")
+parser.add_argument('--version', action='version', version=pycbc.version.git_verbose_msg)
+parser.add_argument('--verbose', action="store_true")
 parser.add_argument('--sim-files', nargs='+', required=True, help="List of "
                         "simulation files to estimate the sensitive volume")
 parser.add_argument('--m_dist', nargs = '+', required=True, help="Specify "
@@ -63,7 +65,7 @@ parser.add_argument('--output-file', required=True, help="Name of the "
                                   "output file for saving rate posteriors.")
 parser.add_argument('--thr-var', required=False, default = 'stat',
                                   help="Variable used to define threshold.")
-parser.add_argument('--thr-val', type = float, required=False, default = 8.0, 
+parser.add_argument('--thr-val', type = float, required=False, default = 8.0,
                                                  help="Value of threshold.")
 parser.add_argument('--population-model', required = True,
                        help = 'Population model defined in rates_functions')
@@ -85,15 +87,18 @@ parser.add_argument('--calibration-error', dest='cal_err', type=float,
 
 opts = parser.parse_args()
 path = opts.output_file
+pycbc.init_logging(opts.verbose)
 
 assert opts.min_tmplt_mchirp < opts.max_tmplt_mchirp, \
              "Minimum chirp mass should be less than the maximum chirp mass"
 
 # Read the simulation files
+logging.info('Reading injection files')
 injections = si.read_injections(opts.sim_files,
           opts.m_dist, opts.s_dist, opts.d_dist)
 
 # Read the chirp-mass samples -- Imported from rates_function
+logging.info('Read the chirp-mass samples -- Imported from rates_function')
 if opts.population_model == 'imf':
     mchirp_sampler = rf.mchirp_sampler_imf
     prob = rf.prob_imf
@@ -105,6 +110,7 @@ elif opts.population_model == 'bns':
     prob = rf.prob_flat
 
 # Estimate the rates and make supporting plots
+logging.info('Estimating VT')
 vt = si.estimate_vt(injections, mchirp_sampler, prob,
                               thr_var = opts.thr_var,
                               thr_val = opts.thr_val,
@@ -116,10 +122,12 @@ vol_time, sig_vt = vt['VT'], vt['VT_err']
 inj_falloff = vt['thr_falloff']
 
 # Include the calibration uncertainity
+logging.info('Including calibration uncertainty')
 vol, vol_err, cal_err = vol_time, sig_vt, opts.cal_err
 sigma_w_cal_uncrt = np.sqrt((3*cal_err/100.)**2 + (vol_err/vol)**2)
 
-#Sabe background data and coincidences
+#Save background data and coincidences
+logging.info('Saving background data and coincidences')
 all_bkg, coincs = rf.save_bkg_falloff(opts.statmap_file, opts.bank_file,
                   path, opts.thr_val, opts.min_tmplt_mchirp,
                   opts.max_tmplt_mchirp)
@@ -136,12 +144,14 @@ log_fg_ratios = rf.log_rho_fgmc(coincs, fg_stats, fg_bins)
 log_fg_ratios -= rf.log_rho_bg(coincs, bg_bins, bg_counts)
 
 #Load prior samples and fit a skew-log-normal to it
+logging.info('Loading prior samples and fit a skew-log-normal to it')
 with h5py.File(opts.prior_samples, "r") as f:
     R = np.array(f[opts.population_model+'/Rf'])
 
 alpha, mu, sigma = rf.fit(R)
 
 #Estimate rates
+logging.info('Calculating rates')
 rate_samples = {}
 log_R = log(R)
 mu_log_vt = np.log(vol_time/1e9)
@@ -154,6 +164,7 @@ rate_post = rate_samples['Rf']
 r50, r95, r05 = np.percentile(rate_post, [50, 95, 5])
 
 #Save rate posteriors
+logging.info('Saving rate posteriors')
 with h5py.File(opts.output_file, 'w') as out:
 
     pl = out.create_group(opts.population_model)
@@ -164,3 +175,5 @@ with h5py.File(opts.output_file, 'w') as out:
     d = out.create_group('data')
     d.create_dataset('log_fg_bg_ratio', data=log_fg_ratios, compression='gzip')
     d.create_dataset('newsnr', data=coincs, compression='gzip')
+
+logging.info('Done!')

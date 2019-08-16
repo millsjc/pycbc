@@ -213,6 +213,7 @@ closed_box_ifars = []
 # if there are bins, then there is a pair of plots for each bin
 # with no hierarchical_level specified, these results are the
 # final stage of hierarchical removal (i.e. the main result).
+
 for bin_file in [final_bg_file]:
     # Open box
     snrifar = wf.make_snrifar_plot(workflow, bin_file,
@@ -221,6 +222,8 @@ for bin_file in [final_bg_file]:
                     rdir['open_box_result'], tags=bin_file.tags)
 
     results_page += [(snrifar, ratehist)]
+
+    # print('bin file has tag: %s' %(bin_file.tags))
 
     # Significance page
     snrifar_ifar = wf.make_snrifar_plot(workflow, bin_file,
@@ -250,7 +253,7 @@ symlink_result(table, 'open_box_result/significance')
 
 # Open box results summary
 results_page += [(table,)]
-layout.two_column_layout(rdir['open_box_result'], results_page)
+# layout.two_column_layout(rdir['open_box_result'], results_page)
 
 # Significance page
 results_aux_page += [(table,)]
@@ -469,6 +472,7 @@ inj_coincs = wf.FileList()
 files_for_combined_injfind = []
 for inj_file, tag in zip(inj_files, inj_tags):
     ctags = [tag, 'inj']
+    # print('inj file has tag: %s' % (ctags))
     output_dir = '%s_coinc' % tag
 
     if workflow.cp.has_option_tags('workflow-injections',
@@ -518,6 +522,15 @@ for inj_file, tag in zip(inj_files, inj_tags):
                                     final_veto_file[0], final_veto_name[0],
                                     output_dir, tags=ctags)
     inj_coincs += [inj_coinc]
+    ######### FIXME: for now only making population plots for BBH search
+    if ctags[0] =='BBHSEOBNRV4_INJ':
+        # add rates plot to Open Box Summary
+        logging.info("Setting up population rate plots")
+        population_hdf = wf.make_population_hdf(workflow, final_bg_file,
+                        found_inj, hdfbank[0],  rdir['open_box_result'], tags=ctags)
+        population_rate_plot = [(wf.make_population_rate_plot(workflow, population_hdf,
+                        rdir['open_box_result'], tags=ctags),)]
+        results_page += population_rate_plot
 
     #foundmissed/sensitivity plots that go in the subsection wells
     s = wf.make_sensitivity_plot(workflow, found_inj,
@@ -567,6 +580,9 @@ for inj_file, tag in zip(inj_files, inj_tags):
                                    'plot-throughput', tags=[tag]):
         wf.make_throughput_plot(workflow, insps, rdir['workflow/throughput'],
                                 tags=[tag])
+
+# finally add results page now that population plots are made
+layout.two_column_layout(rdir['open_box_result'], results_page)
 
 # Make combined injection plots
 inj_summ = []
