@@ -50,6 +50,8 @@ __author__  = "Ian Harry <ian.harry@astro.cf.ac.uk>"
 __version__ = "git id %s" % git_version.id
 __date__    = git_version.date
 
+vprint = lambda x: sys.stdout.write(x) if verbose else str
+
 # =============================================================================
 # Parse command line
 # =============================================================================
@@ -266,6 +268,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   lsctables.SimInspiral.get_theta = sim_inspiral_get_theta
 
   # set output directory
+  vprint("setting output directory")
   if not os.path.isdir(outdir):
     os.makedirs(outdir)
 
@@ -298,7 +301,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     raise BrokenError
 
 
-  if verbose: sys.stdout.write("%d triggers loaded at %d.\n"\
+  vprint("%d triggers loaded at %d.\n"\
                                % (len(trigs), elapsed_time()))
 
 
@@ -402,7 +405,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
   totalTrials = sum([len(trialDict[slideID]) for slideID in range(numSlides)]) 
 
-  if verbose: sys.stdout.write("Segments loaded and %d trials generated at %d."\
+  vprint("Segments loaded and %d trials generated at %d."\
                                "\n" % (totalTrials, elapsed_time()))
 
   #
@@ -428,7 +431,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     trigAllBestNR[slideID] = np.array(trigAllBestNR[slideID])
     trigAllMchirp[slideID] = np.asarray(slideTrigs.get_column('mchirp'))
 
-  if verbose: sys.stdout.write("Basic columns extracted at %d.\n"\
+  vprint("Basic columns extracted at %d.\n"\
                              % elapsed_time())
 
   trigTime   = {}
@@ -506,7 +509,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
                  max(timeBinVetoMaxSNRUncut[slideID][-1,j],\
                      timeBinVetoMaxSNRUncut[slideID][i,j])
 
-  if verbose: sys.stdout.write("%d mass bins seeded and SNR/bestNR maxima "\
+  vprint("%d mass bins seeded and SNR/bestNR maxima "\
                                "calculated at %d.\n"\
                                % (len(massBins), elapsed_time()))
 
@@ -691,7 +694,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     # separate off mass column
     onMchirp = onTrigs.get_column('mchirp')
 
-    if verbose: sys.stdout.write("%d onsource triggers loaded at %d.\n"\
+    vprint("%d onsource triggers loaded at %d.\n"\
                                  % (len(onTrigs), elapsed_time()))
 
     # set loudest event arrays
@@ -730,7 +733,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
           loudOnBestNRTrigs[bin[0]] = None
           loudOnBestNR[bin[0]] = 0 
 
-    if verbose: sys.stdout.write("Onsource analysed at %d.\n" % elapsed_time())
+    vprint("Onsource analysed at %d.\n" % elapsed_time())
   
     file2 = open('%s/loud_numbers.txt' % outdir, 'w')
     th = ['Bin', 'FAP', 'GPS', 'Rec. m1', 'Rec. m2', 'Rec. Mc', 'Rec. RA',\
@@ -789,7 +792,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         foundInjs.append(sim)
         foundTrigs.append(trig)
   
-    if verbose: sys.stdout.write("Missed/found injections/triggers loaded at "+\
+    vprint("Missed/found injections/triggers loaded at "+\
                                  "%d.\n" % elapsed_time())
 
     # extract columns
@@ -977,13 +980,13 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     # but only in the 1-detector case
     for ifo in ifos:
         if sum(injSigma[ifo] == 0):
-            if verbose: sys.stdout.write("%s: sigmasq not set for at least "
+            vprint("%s: sigmasq not set for at least "
                                          "one trigger.\n" % ifo)
         if sum(injSigma[ifo] != 0) == 0: 
-            if verbose: sys.stdout.write("%s: sigmasq not set for any "
+            vprint("%s: sigmasq not set for any "
                                          "trigger.\n" % ifo)
             if len(ifos) == 1:
-                if verbose: sys.stdout.write("This is a single ifo analysis. "
+                vprint("This is a single ifo analysis. "
                                              "Setting sigmasq to unity for all"
                                              " triggers.\n")
                 injSigma[ifo][:] = 1.
@@ -1002,7 +1005,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     for ifo in ifos:
       injSigmaMean[ifo] = ((injSigma[ifo]*fResp[ifo])/injSigmaTot).mean()
 
-    if verbose: sys.stdout.write("%d found injections analysed at %d.\n"\
+    vprint("%d found injections analysed at %d.\n"\
                                  % (len(foundInjs), elapsed_time()))
 
     #
@@ -1061,7 +1064,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         minMissedInjSpin2 = 1
         maxMissedInjSpin2 = 0
     
-    if verbose: sys.stdout.write("%d missed injections analysed at %d.\n"\
+    vprint("%d missed injections analysed at %d.\n"\
                                  % (len(missedInjs), elapsed_time()))
 
     #
@@ -1072,7 +1075,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     longInjDist = stats.uniform.rvs(size=totalInjs) * (upperDist-lowerDist) +\
                   upperDist
 
-    if verbose: sys.stdout.write("%d long distance injections created at %d.\n"\
+    vprint("%d long distance injections created at %d.\n"\
                                  % (totalInjs, elapsed_time()))
 
     #
@@ -1113,7 +1116,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
     # Calibration phase uncertainties are neglected
 
-    if verbose: sys.stdout.write("Calibration amplitude uncertainty "+\
+    vprint("Calibration amplitude uncertainty "+\
                                  "calculated at %d.\n" % elapsed_time())
 
     #
@@ -1143,7 +1146,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
       longInjDistMC[i+1,:] = longInjDist / (maxDCCalError *\
                              (1 + calDistRed) * (1 + wavDistRed))
 
-    if verbose: sys.stdout.write("MC injection set distributed with %d "\
+    vprint("MC injection set distributed with %d "\
                                  "iterations at %d\n"\
                                  % (numMCInjs, elapsed_time()))
 
@@ -1259,7 +1262,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     np.savetxt('%s/numinjections.txt' % outdir, numInjections.T)
     np.savetxt('%s/numinjectionsnomc.txt' % outdir, numInjectionsNoMC.T)
 
-    if verbose: sys.stdout.write("Found/missed injection efficiency "+\
+    vprint("Found/missed injection efficiency "+\
                                  "calculations completed at %d.\n"\
                                  % elapsed_time())
 
@@ -1335,7 +1338,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     file = open("%s/quiet_found_triggers.html" % outdir, "w")
     file.write(dqHTMLUtils.write_table(markup.page(), th, td)())
     file.close()
-    if verbose: sys.stdout.write("%d triggers written to file at %d.\n"\
+    vprint("%d triggers written to file at %d.\n"\
                                  % (len(td), elapsed_time()))
 
     t_missed = zip(*[gMissed2Dist] + \
@@ -1944,7 +1947,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     fig.savefig('%s/found_sky_error_distance.png' % outdir)
     plt.close()
 
-  if verbose: sys.stdout.write("Plots complete at %d.\n" % elapsed_time())
+  vprint("Plots complete at %d.\n" % elapsed_time())
 
 if __name__=='__main__':
 
