@@ -44,11 +44,12 @@ from scipy import stats
 from glue import segments,markup
 from glue.ligolw import table,lsctables,utils,ligolw
 from pycbc import __version__
+from pycbc.results.pygrb_plotting_utils import extract_vetoes, extract_ifos, load_xml_file
 
 from pylal.coh_PTF_pyutils import get_bestnr,readSegFiles,get_f_resp
 import MultiInspiralUtils
 from pylal import plotutils
-from pylal.dq import dqSegmentUtils,dqHTMLUtils
+from pylal.dq import dqHTMLUtils
 
 vprint = lambda x: sys.stdout.write(x) if verbose else str
 
@@ -250,12 +251,11 @@ def parse_command_line():
   
   return opts, args
 
-def load_inj_file(foundFile):
-  xmldoc = utils.load_filename(
-    foundFile,gz=foundFile.endswith("gz"), 
-    contenthandler=lsctables.use_in(ligolw.LIGOLWContentHandler)
-  )
-  return table.get_table(xmldoc, lsctables.SimInspiralTable.tableName)
+def load_xml_table(xmlFile, table_name):
+  '''Load xml table from file.
+  '''
+  xmldoc = load_xml_file(xmlFile)
+  return table.get_table(xmldoc, table_name)
 
 # =============================================================================
 # Main function
@@ -285,9 +285,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   #
 
   # FIXME: This is nasty, we actually read the file twice, can we fix this?
-  xmldoc = utils.load_filename(trigFile,gz=trigFile.endswith("gz"), contenthandler = lsctables.use_in(ligolw.LIGOLWContentHandler))
-  searchSumm = table.get_table(xmldoc, lsctables.SearchSummaryTable.tableName)
-  ifos = sorted(map(str,searchSumm[0].get_ifos()))
+  ifos = extract_ifos(trigFile)
   ifoAtt = {'G1':'g', 'H1':'h1', 'H2':'h2', 'L1':'l', 'V1':'v', 'T1':'t'}
 
   trigs, slideDict, segmentDict = \
@@ -327,21 +325,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   #
 
   # Construct veto list
-  vetoes = segments.segmentlistdict()
-  for ifo in ifos:
-    vetoes[ifo] = segments.segmentlist()
-
-  if vetoFiles:
-    for file in vetoFiles:
-      ifo = os.path.basename(file)[:2]
-      if ifo in ifos:
-        # This returns a coalesced list of the vetoes
-        tmpVetoSegs = dqSegmentUtils.fromsegmentxml(open(file,'r'))
-        for entry in tmpVetoSegs:
-          vetoes[ifo].append(entry)
-
-  for ifo in ifos:
-    vetoes[ifo].coalesce()
+  vetoes = extract_vetoes(vetoFiles, ifos)
   #
   # construct trials
   #
@@ -698,7 +682,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   if onsourceFile:
 
     # get trigs
-    onTrigs = MultiInspiralUtils.ReadMultiInspiralFromFiles([onsourceFile])
+    onTrigs = load_xml_table(onsourceFile, "multi_inspiral")
     # separate off mass column
     onMchirp = onTrigs.get_column('mchirp')
 
@@ -786,10 +770,10 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
     sites = [ifo[0] for ifo in ifos]
 
-    missedInjs = load_inj_file(missedFile).veto(vetoes.union(vetoes.keys()))
+    missedInjs = load_xml_table(missedFile, "sim_inspiral").veto(vetoes.union(vetoes.keys()))
 
-    foundInjsNoVeto = load_inj_file(foundFile)
-    foundTrigsNVeto = MultiInspiralUtils.ReadMultiInspiralFromFiles([foundFile])
+    foundInjsNoVeto = load_xml_table(foundFile, "sim_inspiral")
+    foundTrigsNVeto = load_xml_table(foundFile, "multi_inspiral")
 
     foundInjs = lsctables.New(lsctables.SimInspiralTable)
     foundTrigs = lsctables.New(lsctables.MultiInspiralTable)
