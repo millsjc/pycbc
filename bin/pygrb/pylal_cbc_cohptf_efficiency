@@ -34,21 +34,20 @@ import copy
 start = int(time.time()*10**6)
 elapsed_time = lambda: int(time.time()*10**6-start)
 
-import os,sys,matplotlib,numpy as np,re,copy,optparse
+import os,sys,matplotlib,re,copy,optparse
+import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import rc,cm,colors
-from pylal import SimInspiralUtils,MultiInspiralUtils,plotutils,git_version
-from glue import segments,markup
-from pylal.dq import dqSegmentUtils,dqHTMLUtils
-from glue.ligolw import table,lsctables,utils,ligolw
-from pylal.coh_PTF_pyutils import *
 import scipy
 from scipy import stats
+from glue import segments,markup
+from glue.ligolw import table,lsctables,utils,ligolw
 
-__author__  = "Ian Harry <ian.harry@astro.cf.ac.uk>"
-__version__ = "git id %s" % git_version.id
-__date__    = git_version.date
+from pycbc import __version__
+from pylal.coh_PTF_pyutils import *
+from pylal import SimInspiralUtils,MultiInspiralUtils,plotutils,git_version
+from pylal.dq import dqSegmentUtils,dqHTMLUtils
 
 vprint = lambda x: sys.stdout.write(x) if verbose else str
 
