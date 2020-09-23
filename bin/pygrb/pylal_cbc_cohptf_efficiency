@@ -34,7 +34,7 @@ import copy
 start = int(time.time()*10**6)
 elapsed_time = lambda: int(time.time()*10**6-start)
 
-import os,sys,matplotlib,re,copy,optparse
+import os,sys,matplotlib,re,copy,optparse,glob
 import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -45,11 +45,15 @@ from glue import segments,markup
 from glue.ligolw import table,lsctables,utils,ligolw
 
 from pycbc import __version__
-from pylal.coh_PTF_pyutils import *
-from pylal import SimInspiralUtils,MultiInspiralUtils,plotutils,git_version
+from pylal.coh_PTF_pyutils import get_bestnr,readSegFiles,get_f_resp,sim_inspiral_get_theta
+import MultiInspiralUtils
+from pylal import plotutils
 from pylal.dq import dqSegmentUtils,dqHTMLUtils
 
 vprint = lambda x: sys.stdout.write(x) if verbose else str
+
+print("setting random seed to 1234\n")
+np.random.seed(1234)
 
 # =============================================================================
 # Parse command line
@@ -245,6 +249,13 @@ def parse_command_line():
     opts.newsnr_threshold = opts.snr_threshold
   
   return opts, args
+
+def load_inj_file(foundFile):
+  xmldoc = utils.load_filename(
+    foundFile,gz=foundFile.endswith("gz"), 
+    contenthandler=lsctables.use_in(ligolw.LIGOLWContentHandler)
+  )
+  return table.get_table(xmldoc, lsctables.SimInspiralTable.tableName)
 
 # =============================================================================
 # Main function
@@ -777,10 +788,9 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
     sites = [ifo[0] for ifo in ifos]
 
-    missedInjs = SimInspiralUtils.ReadSimInspiralFromFiles([missedFile])\
-            .veto(vetoes.union(vetoes.keys()))
+    missedInjs = load_inj_file(missedFile).veto(vetoes.union(vetoes.keys()))
 
-    foundInjsNoVeto  = SimInspiralUtils.ReadSimInspiralFromFiles([foundFile])
+    foundInjsNoVeto = load_inj_file(foundFile)
     foundTrigsNVeto = MultiInspiralUtils.ReadMultiInspiralFromFiles([foundFile])
 
     foundInjs = lsctables.New(lsctables.SimInspiralTable)
