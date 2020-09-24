@@ -41,7 +41,8 @@ import matplotlib.pyplot as plt
 from matplotlib import rc,cm,colors
 import scipy
 from scipy import stats
-from glue import segments,markup
+from ligo import segments
+from glue import markup
 from glue.ligolw import table,lsctables,utils,ligolw
 from pycbc import __version__
 from pycbc.results.pygrb_plotting_utils import extract_vetoes, extract_ifos, load_xml_file
@@ -292,19 +293,11 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
       MultiInspiralUtils.ReadMultiInspiralTimeSlidesFromFiles([trigFile])
 
   # Identify the zero-lag slide
-  zeroLagSlideID = None
   numSlides = len(slideDict)
-  for i in range(numSlides):
-    # Is this slide the zero-lag?
-    if max(slideDict[i].values()) == 0:
-      if min(slideDict[i].values()) == 0:
-        if zeroLagSlideID is None:
-          zeroLagSlideID = i
-        else:
-          raise BrokenError
-
-  if zeroLagSlideID is None:
-    raise BrokenError
+  zero_lag_count = [np.count_nonzero(slideDict[i].values()) for i in range(numSlides)]
+  zeroLagSlideID = zero_lag_count.index(0)
+  if np.count_nonzero(np.array(zero_lag_count)==0) != 1:
+    raise ValueError, "slideDict should contain exactly one zero lag slide"
 
 
   vprint("%d triggers loaded at %d.\n"\
@@ -1192,6 +1185,10 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         nearTest = np.zeros((foundExcl).sum()).astype(bool)
         for j,(t,bestNR) in enumerate(zip(foundInjTime[foundExcl],\
                                           foundTrigBestNR[foundExcl])):
+          if j==0:
+            print(zeroLagSlideID)
+            print(len(trigAllBestNR[zeroLagSlideID]))
+            print(np.shape(np.array(trigAllBestNR)))
           nearBestNR  = trigAllBestNR[zeroLagSlideID]\
                         [np.abs(trigAllTime[zeroLagSlideID]-t) < clusterWindow]
           nearTest[j] = ~((nearBestNR * glitchCheckFac > bestNR).any())
