@@ -51,7 +51,7 @@ from pycbc.results.pygrb_plotting_utils import extract_vetoes, extract_ifos, loa
 from pylal.coh_PTF_pyutils import get_bestnr,readSegFiles,get_f_resp
 # import MultiInspiralUtils
 from pylal import plotutils
-from pylal.dq import dqHTMLUtils
+# from pylal.dq import dqHTMLUtils
 
 vprint = lambda x: sys.stdout.write(x) if verbose else str
 
@@ -579,7 +579,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   quietestFile.close()
 
   #
-  # print details of loudest 10 offsouce triggers
+  # print details of loudest 10 offsouce triggers (looks like its the loudest 30)
   #
 
   offSourceTrigs = []
@@ -587,6 +587,8 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     offSourceTrigs.extend( zip(trigAllBestNR[slideID],sortedTrigs[slideID]))
   offSourceTrigs.sort(key = lambda element:element[0])
   offSourceTrigs.reverse()
+  # import pdb
+  # pdb.set_trace()
 
   th = [ 'Mass Bin', 'Trial', 'Slide Num', 'FAP', 'GPS',\
          'Rec. m1', 'Rec. m2', 'Rec. Mc',\
@@ -653,7 +655,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
                                   str(pycbc.results.static_table(td, th))
   # should pass output_file arg on command line and put this in a seperate executable
   title = 'Parameters of loudest offsource triggers'
-  caption = ('Parameters of loudest offsource triggers.')
+  caption = ('Parameters of 30 loudest offsource triggers.')
   pycbc.results.save_fig_with_metadata(html, "%s/loudest_offsource_trigs.html" % outdir, 
                           {},
                           cmd=' '.join(sys.argv),
@@ -662,7 +664,10 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
   # ==========================
   # print loudest SNRs to file
-  # THIS OUTPUT FILE IS CURRENTLY UNUSED - MAYBE DELETE?
+  # THIS OUTPUT FILE IS CURRENTLY UNUSED - MAYBE DELETE? 
+  # note: the only new information from above is the median SNR and bestNR
+  # and the loudest SNR
+  # so could just add this to the above's caption.
   # ==========================
  
   maxSNR       = {}
@@ -733,9 +738,20 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   td.append(d)
 
   # write html table with results
-  file = open('%s/loudest_offsource.html' % outdir, 'w') 
-  file.write(dqHTMLUtils.write_table(markup.page(), th, td)())
-  file.close()
+  # file = open(', 'w') 
+  # file.write(dqHTMLUtils.write_table(markup.page(), th, td)())
+  # file.close()
+
+  html = pycbc.results.dq.redirect_javascript + \
+                                  str(pycbc.results.static_table(td, th))
+  # should pass output_file arg on command line and put this in a seperate executable
+  title = 'Re-weighted SNR and SNR of the loudest and median offsource trigger'
+  caption = ('Re-weighted SNR and SNR of the loudest and median offsource trigger')
+  pycbc.results.save_fig_with_metadata(html, "%s/loudest_median_offsource.html" % outdir, 
+                          {},
+                          cmd=' '.join(sys.argv),
+                          title=title,
+                          caption=caption)
 
   # =======================
   # load on source triggers
@@ -789,7 +805,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
     vprint("Onsource analysed at %d.\n" % elapsed_time())
   
-    file2 = open('%s/loud_numbers.txt' % outdir, 'w')
+
     th = ['Bin', 'FAP', 'GPS', 'Rec. m1', 'Rec. m2', 'Rec. Mc', 'Rec. RA',\
           'Rec. Dec', 'SNR', 'Chi^2', 'Bank veto', 'Auto veto', 'Null SNR'] +\
          ['%s SNR' % ifo for ifo in ifos ] + ['BestNR']
@@ -811,18 +827,28 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
              trig.snr, trig.chisq, trig.bank_chisq,\
              trig.cont_chisq, nullsnr] + \
             [trig.get_sngl_snr(ifo) for ifo in ifos] + [loudOnBestNR[bin[0]]]
-        file2.write('%s\n' % pval.replace('<', '&lt'))
+        # would be good to rename or remove the below output file
+        with open('%s/loud_numbers.txt' % outdir, 'w') as file2:
+          file2.write('%s\n' % pval.replace('<', '&lt'))
         td.append(d)
 
       else:
         td.append(["In mass bin %s to %s there are no events" % tuple(bin)])
-        file2.write('-2\n')
+        with open('%s/loud_numbers.txt' % outdir, 'w') as file2:
+          file2.write('-2\n')
       binNum += 1
 
-    file = open("%s/loudest_events.html" % outdir, "w")
-    file.write(dqHTMLUtils.write_table(markup.page(), th, td)())
-    file.close()
-    file2.close()
+
+    html = pycbc.results.dq.redirect_javascript + \
+                                  str(pycbc.results.static_table(td, th))
+    # should pass output_file arg on command line and put this in a seperate executable
+    title = 'Loudest event'
+    caption = ('Recovered parameters and statistic values of the loudest trigger')
+    pycbc.results.save_fig_with_metadata(html, "%s/loudest_events.html" % outdir, 
+                            {},
+                            cmd=' '.join(sys.argv),
+                            title=title,
+                            caption=caption)
   
   #
   # Now we can start dealing with the injections
@@ -1392,28 +1418,45 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     td = [[i]+list(td[i]) for i in\
           range(nonzeroFAP.sum()+missed.sum()+len(missedInjs))]
 
-    file = open("%s/quiet_found_triggers.html" % outdir, "w")
-    file.write(dqHTMLUtils.write_table(markup.page(), th, td)())
-    file.close()
+    html = pycbc.results.dq.redirect_javascript + \
+                                  str(pycbc.results.static_table(td, th))
+    # should pass output_file arg on command line and put this in a seperate executable
+    title = 'Close injections with FAP>0.'
+    caption = ('Missed injections and found injections with FAP>0.')
+    pycbc.results.save_fig_with_metadata(html, "%s/quiet_found_triggers.html" % outdir, 
+                            {},
+                            cmd=' '.join(sys.argv),
+                            title=title,
+                            caption=caption)
     vprint("%d triggers written to file at %d.\n"\
                                  % (len(td), elapsed_time()))
 
-    t_missed = zip(*[gMissed2Dist] + \
-                    [gMissed2EffSiteDist[ifo] for ifo in sites] + \
-                    [gMissed2m1, gMissed2m2, gMissed2Mchirp, gMissed2Recm1,
-                     gMissed2Recm2, gMissed2RecMchirp, gMissed2Inc, gMissed2RA,
-                     gMissed2Dec, gMissed2RecRA, gMissed2RecDec, gMissed2SNR,
-                     gMissed2Chisq, gMissed2Bank, gMissed2Auto,
-                     gMissed2Null] + \
-                    [gMissed2SnglSNR[ifo] for ifo in ifos] + \
-                    [gMissed2DetStat, gMissed2Spin1x, gMissed2Spin1y,
-                     gMissed2Spin1z, gMissed2Spin2x, gMissed2Spin2y,
-                     gMissed2Spin2z])
-    t_missed.sort(key=lambda elem: elem[0])
-    t_missed = [[i] + list(t_missed[i]) for i in range(missed.sum())]
-    file = open("%s/missed_found_triggers.html" % outdir, "w")
-    file.write(dqHTMLUtils.write_table(markup.page(), th, t_missed)())
-    file.close()
+    # t_missed = zip(*[gMissed2Dist] + \
+    #                 [gMissed2EffSiteDist[ifo] for ifo in sites] + \
+    #                 [gMissed2m1, gMissed2m2, gMissed2Mchirp, gMissed2Recm1,
+    #                  gMissed2Recm2, gMissed2RecMchirp, gMissed2Inc, gMissed2RA,
+    #                  gMissed2Dec, gMissed2RecRA, gMissed2RecDec, gMissed2SNR,
+    #                  gMissed2Chisq, gMissed2Bank, gMissed2Auto,
+    #                  gMissed2Null] + \
+    #                 [gMissed2SnglSNR[ifo] for ifo in ifos] + \
+    #                 [gMissed2DetStat, gMissed2Spin1x, gMissed2Spin1y,
+    #                  gMissed2Spin1z, gMissed2Spin2x, gMissed2Spin2y,
+    #                  gMissed2Spin2z])
+    # t_missed.sort(key=lambda elem: elem[0])
+    # t_missed = [[i] + list(t_missed[i]) for i in range(missed.sum())]
+    # file = open("%s/missed_found_triggers.html" % outdir, "w")
+    # file.write(dqHTMLUtils.write_table(markup.page(), th, t_missed)())
+    # file.close()
+    # html = pycbc.results.dq.redirect_javascript + \
+    #                               str(pycbc.results.static_table(td, th))
+    # # should pass output_file arg on command line and put this in a seperate executable
+    # title = 'Found injections with bestNR=0'
+    # caption = ('Found injections with bestNR=0')
+    # pycbc.results.save_fig_with_metadata(html, "%s/missed_found_triggers.html" % outdir, 
+    #                         {},
+    #                         cmd=' '.join(sys.argv),
+    #                         title=title,
+    #                         caption=caption)
 
   # ==========
   # make plots
