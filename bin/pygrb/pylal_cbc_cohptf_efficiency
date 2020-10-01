@@ -45,10 +45,11 @@ from ligo import segments
 from glue import markup
 from glue.ligolw import table,lsctables,utils,ligolw
 from pycbc import __version__
+import pycbc.results
 from pycbc.results.pygrb_plotting_utils import extract_vetoes, extract_ifos, load_xml_file
 
 from pylal.coh_PTF_pyutils import get_bestnr,readSegFiles,get_f_resp
-import MultiInspiralUtils
+# import MultiInspiralUtils
 from pylal import plotutils
 from pylal.dq import dqHTMLUtils
 
@@ -258,6 +259,59 @@ def load_xml_table(xmlFile, table_name):
   xmldoc = load_xml_file(xmlFile)
   return table.get_table(xmldoc, table_name)
 
+def get_id_numbers(ligolw_table, column):
+    ids = [int(getattr(row, column)) for row in ligolw_table]
+    return ids
+
+def load_time_slides(xmldoc):
+  time_slide = table.get_table(xmldoc, lsctables.TimeSlideTable.tableName)
+  time_slide_unsorted = [dict(i) for i in time_slide.as_dict().values()]
+  # NB: sorting not necessary if using python 3
+  sort_idx = np.argsort(np.array([
+      int(time_slide.get_time_slide_id(ov)) for ov in time_slide_unsorted
+  ]))
+  time_slide_list = np.array(time_slide_unsorted)[sort_idx]
+  # check time_slide_ids are ordered correctly. 
+  ids = get_id_numbers(time_slide, "time_slide_id")[::len(time_slide_list[0].keys())]
+  if not (np.all(ids[1:] == np.array(ids[:-1])+1) and ids[0]==0):
+    raise ValueError("time_slide_ids list should start at zero and increase by one for every element")
+  # check that the zero-lag slide has time_slide_id == 0.
+  if not np.all(np.array(list(time_slide_list[0].values())) == 0):
+    raise ValueError(
+      "zero-lag slide should have time_slide_id == 0\n"
+      "but first element of time_slide_list is %s \n" % 
+      time_slide_list[0]
+    )
+  return time_slide_list
+
+def load_segment_dict(xmldoc):
+  # Get the mapping table
+  # NB: unclear whether this step is necessary (seems the 
+  # segment_def_id and time_slide_id are always identical)
+  time_slide_map_table = table.get_table(xmldoc,
+      lsctables.TimeSlideSegmentMapTable.tableName)
+  segment_map = {
+      int(entry.segment_def_id): int(entry.time_slide_id) 
+      for entry in time_slide_map_table
+  }
+  # Extract the segment table
+  segment_table = table.get_table(
+    xmldoc,lsctables.SegmentTable.tableName
+    )
+  segmentDict = {}
+  for entry in segment_table:
+    currSlidId = segment_map[int(entry.segment_def_id)]
+    currSeg = entry.get()
+#     print(abs(currSeg), currSlidId, ts[currSlidId])
+    if not currSlidId in segmentDict.keys():
+      segmentDict[currSlidId] = segments.segmentlist()
+    segmentDict[currSlidId].append(currSeg)
+    segmentDict[currSlidId].coalesce()
+  return segmentDict
+
+def load_multi_inspiral(xmldoc):
+    return table.get_table(xmldoc, "multi_inspiral")
+
 # =============================================================================
 # Main function
 # =============================================================================
@@ -289,8 +343,16 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
   ifos = extract_ifos(trigFile)
   ifoAtt = {'G1':'g', 'H1':'h1', 'H2':'h2', 'L1':'l', 'V1':'v', 'T1':'t'}
 
-  trigs, slideDict, segmentDict = \
-      MultiInspiralUtils.ReadMultiInspiralTimeSlidesFromFiles([trigFile])
+  # import MultiInspiralUtils
+  # import pdb
+  # pdb.set_trace()
+  # trigs, slideDict, segmentDict = \
+  #     MultiInspiralUtils.ReadMultiInspiralTimeSlidesFromFiles([trigFile])
+  xmldoc = load_xml_file(trigFile)
+  trigs = load_multi_inspiral(xmldoc)
+  slideDict = load_time_slides(xmldoc)
+  segmentDict = load_segment_dict(xmldoc)
+
 
   # Identify the zero-lag slide
   numSlides = len(slideDict)
@@ -587,9 +649,16 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     d.append('%.2f' % bestNR)
     td.append(d)
 
-  file = open("%s/loudest_offsource_trigs.html" % outdir, "w")
-  file.write(dqHTMLUtils.write_table(markup.page(), th, td)())
-  file.close()
+  html = pycbc.results.dq.redirect_javascript + \
+                                  str(pycbc.results.static_table(td, th))
+  # should pass output_file arg on command line and put this in a seperate executable
+  title = 'Parameters of loudest offsource triggers'
+  caption = ('Parameters of loudest offsource triggers.')
+  pycbc.results.save_fig_with_metadata(html, "%s/loudest_offsource_trigs.html" % outdir, 
+                          {},
+                          cmd=' '.join(sys.argv),
+                          title=title,
+                          caption=caption)
 
   # ==========================
   # print loudest SNRs to file
