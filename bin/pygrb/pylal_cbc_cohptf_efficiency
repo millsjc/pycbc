@@ -16,25 +16,22 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-"""
-Coherent PTF triggered search efficiency calculator.
-
-This script calculates the search efficiency as a function of source distance, for the triggered (GRB) search results from the coherent PTF inspiral pipeline.
-"""
-
 # =============================================================================
 # Preamble
 # =============================================================================
 
 from __future__ import division
 
-# set up timer
-import time
+import sys
+import glob
+import os
 import copy
-start = int(time.time()*10**6)
-elapsed_time = lambda: int(time.time()*10**6-start)
-
-import os,sys,matplotlib,re,copy,optparse,glob
+import logging
+from glue.ligolw import lsctables
+import pycbc.version
+from pycbc.results.pygrb_postprocessing_utils import extract_vetoes, extract_ifos, load_xml_file, load_xml_table
+## check if the following are needed 
+import matplotlib,re,optparse
 import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -43,397 +40,171 @@ import scipy
 from scipy import stats
 from ligo import segments
 from glue import markup
-from glue.ligolw import table,lsctables,utils,ligolw
-from pycbc import __version__
+from glue.ligolw import table,utils,ligolw
 from pycbc.detector import Detector
 import pycbc.results
-from pycbc.results.pygrb_plotting_utils import extract_vetoes, extract_ifos, load_xml_file
 
+# Deprecated
 from pylal.coh_PTF_pyutils import get_bestnr,readSegFiles,get_f_resp
 # import MultiInspiralUtils
 from pylal import plotutils
 # from pylal.dq import dqHTMLUtils
 
-vprint = lambda x: sys.stdout.write(x) if verbose else str
-
-print("setting random seed to 1234\n")
-np.random.seed(1234)
+__author__  = "Francesco Pannarale <francesco.pannarale@ligo.org>"
+__version__ = pycbc.version.git_verbose_msg
+__date__ = pycbc.version.date
+__program__ = "pycbc_pygrb_efficiency"
 
 # =============================================================================
-# Parse command line
+# Main script starts here
 # =============================================================================
+description = 'Efficiency calculator for the triggered search (PyGRB).'
+usage = __program__ + ' [--options]'
+opts = pygrb_plot_opts_parser(usage=usage, description=description, version=__version__)
 
-def parse_command_line():
+# TODO: Deprecated options: remove all over and then here
+#sigopts.add_option("-M", "--mass-bins", action="store", type="string",\
+#                                      default="0-3.48,3.48-6,6-20",\
+#                                      help="comma separated list of dash-separated pairs "\
+#                                                "of m_low-m_high mass bins, default: %default")
+#calopts.add_option("-q", "--h2-cal-error", action="store",\
+#                                      type="float", default=0,
+#                                      help="The standard deviation to use when calculating the "\
+#                                                "H2 calibration amplitude error.")
+#calopts.add_option("-P", "--h2-dc-cal-error", action="store",\
+#                                      type="float", default=1.0,
+#                                      help="The scaling factor to use when calculating the H2 "\
+#                                                  "calibration amplitude error.")
+#parser.add_option("-S", "--old-code", action="store_true", default=False,\
+#                                    help="Use this flag if the old coh_PTF_inspiral, in" +\
+#                                              "which ra,dec was not time dependent was used" +\
+#                                              ", default: %default")
 
-    usage = """usage: %prog [options]"""
-    _desc = __doc__[1:] 
+if opts.verbose:
+    level = logging.INFO
+else:
+    level = logging.WARNING
+logging.basicConfig(format="%(asctime)s:%(levelname)s : %(message)s",
+                    level=level)
+
+# Check options
+if opts.offsource_file == None:
+    msg = "Please specify a path to the offsource trigger file"
+    logging.error(msg)
+
+if opts.veto_directory and (opts.veto_category == None):
+    msg = "Must supply veto category if applying vetoes"
+    logging.error(msg)
     
-    parser = optparse.OptionParser(usage, version=__version__, description=_desc)
-
-    # add standard options
-    parser.add_option("-v", "--verbose", action="store_true", default=False,\
-                                        help="verbose output, default: %default")
-
-    # add file and directory options
-    fopts = optparse.OptionGroup(parser, "File and directory options",\
-                                                              description="Locations of necessary files and "\
-                                                                                      "directories")
-
-    fopts.add_option("-a", "--segment-dir", action="store", type="string",\
-                                      default=None,\
-                                      help="directory holding buffer, on and off source segment "\
-                                                "files.")
-    fopts.add_option("-t", "--offsource-file", action="store", type="string",\
-                                      default=None, help="The location of the trigger file")
-    fopts.add_option("-O", "--onsource-file", action="store", type="string",\
-                                      default=None, help="The location of the trigger file")
-    fopts.add_option("-f", "--found-file", action="store", type="string",\
-                                      default=None,\
-                                      help="The location of the found injections file")
-    fopts.add_option("-m", "--missed-file",action="store",type="string",\
-                                      default=None,\
-                                      help="The location of the missed injections file")
-    fopts.add_option("-o", "--output-path", action="store", type="string",\
-                                      default=os.getcwd(), help="Output path for plots")
-    fopts.add_option("-l", "--veto-directory",action="store",type="string",\
-                                      default=None, help="The location of the CATX veto files")
-    fopts.add_option("-b", "--veto-category",action="store",type="int",\
-                                      default=None, help="Apply vetoes up to this level inclusive")
-    fopts.add_option("-s", "--segment-length", action="store", type="float",\
-                                          default=None,\
-                                          help="The length of analysis segments.")
-    fopts.add_option("-e", "--pad-data", action="store", type="float",\
-                                          default=None,\
-                                          help="The length of padding around analysis chunk.")
-
-
-    # add signal based veto options
-    sigopts = optparse.OptionGroup(parser, "Signal options",\
-                                                                  description="Signal and signal-based veto "\
-                                                                                          "options")
-
-    sigopts.add_option("-M", "--mass-bins", action="store", type="string",\
-                                          default="0-3.48,3.48-6,6-20",\
-                                          help="comma separated list of dash-separated pairs "\
-                                                    "of m_low-m_high mass bins, default: %default")
-    sigopts.add_option("-Q", "--chisq-index", action="store", type="float",\
-                                          default=4.0, help="chisq_index for newSNR calculation, "+\
-                                                                              "default: %default")
-    sigopts.add_option("-N", "--chisq-nhigh", action="store", type="float",\
-                                          default=3.0, help="nhigh for newSNR calculation, "+\
-                                                                              "default: %default")
-    sigopts.add_option("-A", "--null-snr-threshold", action="store",\
-                                          type="string", default="4.25,6",\
-                                          help="comma separated lower,higher null SNR thresholds, "+\
-                                                    " for null SNR cut, default: \"%default\"")
-    sigopts.add_option("-g", "--glitch-check-factor", action="store",\
-                                          type="float",default=1.0,\
-                                          help="When deciding exclusion efficiencies this value is"+\
-                                                    " multiplied to the offsource around the injection "+\
-                                                    "trigger to determine if it is just a loud glitch. "+\
-                                                    "default: %default")
-    sigopts.add_option("-C", "--cluster-window", action="store",\
-                                          type="float",default=0.1,help="The cluster window used "+\
-                                                    "to cluster triggers in time. default: %default")
-
-    sigopts.add_option("-j","--sngl-snr-threshold", action="store", type="float",\
-                                        default=4.0, help="Single detector SNR threshold, the"+\
-                                        "two most sensitive detectors should have SNR above this"+\
-                                        " default: %default")
-
-    sigopts.add_option("-J", "--snr-threshold", action="store", type="float",\
-                                        default=6.0, help="SNR threshold for recording triggers,"+\
-                                                                            " default: %default")
-
-    sigopts.add_option("-k", "--newsnr-threshold", action="store", type="float",\
-                                        default=None, help="NewSNR threshold for calculating the "+\
-                                        "chisq of triggers (based on value of auto and bank chisq"+\
-                                        " values. By default will take the same value as "+\
-                                        "snr-threshold")
-
-    sigopts.add_option("-K", "--null-grad-thresh", action="store", type="float",\
-                                        default=20., help="Threshold above which to increase the,"+\
-                                        "values of the null SNR cut. default: %default")
-
-    sigopts.add_option("-T", "--null-grad-val", action="store", type="float",\
-                                        default=0.2, help="Rate the null SNR cut will increase"+\
-                                        "above the threshold. default: %default")
-
-
-    # efficiency options
-    effopts = optparse.OptionGroup(parser, "Efficiency options",\
-                                                                  description="Tunable parameters for "\
-                                                                                          "efficiency calculation")
-
-    effopts.add_option("-U", "--upper-inj-dist", action="store",\
-                                          type="float",default=1000,help="The upper distance of "+\
-                                                    "the injections, if used. default: %default")
-    effopts.add_option("-L", "--lower-inj-dist", action="store",\
-                                          type="float",default=0,help="The lower distance of "+\
-                                                    "the injections, if used. default: %default")
-    effopts.add_option("-n", "--num-bins", action="store",\
-                                          type="int",default=0,help="The number of bins used to"+\
-                                                    "calculate injection efficiency. default: %default")
-    effopts.add_option("-I", "--num-mc-injections", action="store", type="int",\
-                                          default=100,\
-                                          help="Number of Monte Carlo injection simulations to "\
-                                                    "perform, default: %default")
-
-    # calibration options
-    calopts = optparse.OptionGroup(parser, "Calibration options",\
-                                                                  description="Waveform and interferometer "+\
-                                                                                          "calibration error options")
-    calopts.add_option("-z", "--waveform-error", action="store",\
-                                          type="float", default=0,
-                                          help="The standard deviation to use when calculating the "\
-                                                    "waveform error.")
-    calopts.add_option("-Z", "--h1-cal-error", action="store",\
-                                          type="float", default=0,
-                                          help="The standard deviation to use when calculating the "\
-                                                    "H1 calibration amplitude error.")
-    calopts.add_option("-q", "--h2-cal-error", action="store",\
-                                          type="float", default=0,
-                                          help="The standard deviation to use when calculating the "\
-                                                    "H2 calibration amplitude error.")
-    calopts.add_option("-y", "--l1-cal-error", action="store",\
-                                          type="float", default=0,
-                                          help="The standard deviation to use when calculating the "\
-                                                    "L1 calibration amplitude error.")
-    calopts.add_option("-Y", "--v1-cal-error", action="store",\
-                                          type="float", default=0,
-                                          help="The standard deviation to use when calculating the "\
-                                                    "V1 calibration amplitude error.")
-    calopts.add_option("-p", "--h1-dc-cal-error", action="store",\
-                                          type="float", default=1.0,
-                                          help="The scaling factor to use when calculating the H1 "\
-                                                      "calibration amplitude error.")
-    calopts.add_option("-P", "--h2-dc-cal-error", action="store",\
-                                          type="float", default=1.0,
-                                          help="The scaling factor to use when calculating the H2 "\
-                                                      "calibration amplitude error.")
-    calopts.add_option( "-r", "--l1-dc-cal-error", action="store",\
-                                          type="float", default=1.0,
-                                          help="The scaling factor to use when calculating the L1 "\
-                                                      "calibration amplitude error.")
-    calopts.add_option("-R", "--v1-dc-cal-error", action="store",\
-                                          type="float", default=1.0,
-                                          help="The scaling factor to use when calculating the V1 "\
-                                                      "calibration amplitude error.")
-
-    parser.add_option("-S", "--old-code", action="store_true", default=False,\
-                                        help="Use this flag if the old coh_PTF_inspiral, in" +\
-                                                  "which ra,dec was not time dependent was used" +\
-                                                  ", default: %default")
-
-    parser.add_option_group(fopts)
-    parser.add_option_group(sigopts)
-    parser.add_option_group(effopts)
-    parser.add_option_group(calopts)
-
-    (opts,args) = parser.parse_args()
-
-    if not opts.segment_dir:
-        parser.error("must provide --segment-dir")
-
-    if not opts.offsource_file:
-        parser.error("must provide trig file")
-    
-    if (not opts.found_file) and (not opts.missed_file):
-        opts.do_injections = False
+if (opts.found_file == None) and (opts.missed_file == None):
+    opts.do_injections = False
     elif (opts.found_file) and opts.missed_file:
         opts.do_injections = True
     else:
-        parser.error("must provide both found and missed file if running "+\
-                                    "injections")
+        msg = "Must provide both found and missed file if running injections"
+        logging.error(msg)
 
-    if opts.veto_directory and not opts.veto_category:
-        parser.error("Must supply veto category if applying vetoes")
-
-    if not opts.newsnr_threshold:
-        opts.newsnr_threshold = opts.snr_threshold
+if not opts.newsnr_threshold:
+    opts.newsnr_threshold = opts.snr_threshold
     
-    return opts, args
+# TODO. Random seed: eventually allow user to specify this
+np.random.seed(1234)
+logging.info("Setting random seed to 1234")
 
-def get_antenna_response(ra, dec, geocent_time, ifo):
-    """This function should be moved to pygrb_plotting_utils to replace 
-    get_f_resp.
-    """
-    i = Detector(ifo)
-    fp, fc = i.antenna_pattern(ra, dec, 0, geocent_time)
-    return fp**2 + fc**2
-    
-def load_xml_table(xmlFile, table_name):
-    '''Load xml table from file.
-    '''
-    xmldoc = load_xml_file(xmlFile)
-    return table.get_table(xmldoc, table_name)
+# Set output directory
+logging.info("Setting output directory")
+if not os.path.isdir(outdir):
+    os.makedirs(outdir)
 
-def get_id_numbers(ligolw_table, column):
-        ids = [int(getattr(row, column)) for row in ligolw_table]
-        return ids
+# Extract IFOs
+# FIXME: This is nasty, we actually read the file twice, can we fix this?
+# In general we may be opening re-reading things (segments too?).
+ifos = extract_ifos(trig_file)
+ifo_att = {'G1':'g', 'H1':'h1', 'K1': 'k', 'L1':'l', 'V1':'v'}
 
-def load_time_slides(xmldoc):
-    time_slide = table.get_table(xmldoc, lsctables.TimeSlideTable.tableName)
-    time_slide_unsorted = [dict(i) for i in time_slide.as_dict().values()]
-    # NB: sorting not necessary if using python 3
-    sort_idx = np.argsort(np.array([
-            int(time_slide.get_time_slide_id(ov)) for ov in time_slide_unsorted
-    ]))
-    time_slide_list = np.array(time_slide_unsorted)[sort_idx]
-    # check time_slide_ids are ordered correctly. 
-    ids = get_id_numbers(time_slide, "time_slide_id")[::len(time_slide_list[0].keys())]
-    if not (np.all(ids[1:] == np.array(ids[:-1])+1) and ids[0]==0):
-        raise ValueError("time_slide_ids list should start at zero and increase by one for every element")
-    # check that the zero-lag slide has time_slide_id == 0.
-    if not np.all(np.array(list(time_slide_list[0].values())) == 0):
-        raise ValueError(
-            "zero-lag slide should have time_slide_id == 0\n"
-            "but first element of time_slide_list is %s \n" % 
-            time_slide_list[0]
-        )
-    return time_slide_list
+# Extract vetoes
+#vetoes = extract_vetoes(trig_file, ifos)
+# FIME: originally this, but elsewhere the one above
+vetoes = extract_vetoes(vetoFiles, ifos)
 
-def load_segment_dict(xmldoc):
-    # Get the mapping table
-    # NB: unclear whether this step is necessary (seems the 
-    # segment_def_id and time_slide_id are always identical)
-    time_slide_map_table = table.get_table(xmldoc,
-            lsctables.TimeSlideSegmentMapTable.tableName)
-    segment_map = {
-            int(entry.segment_def_id): int(entry.time_slide_id) 
-            for entry in time_slide_map_table
-    }
-    # Extract the segment table
-    segment_table = table.get_table(
-        xmldoc,lsctables.SegmentTable.tableName
-        )
-    segmentDict = {}
-    for entry in segment_table:
-        currSlidId = segment_map[int(entry.segment_def_id)]
-        currSeg = entry.get()
-#     print(abs(currSeg), currSlidId, ts[currSlidId])
-        if not currSlidId in segmentDict.keys():
-            segmentDict[currSlidId] = segments.segmentlist()
-        segmentDict[currSlidId].append(currSeg)
-        segmentDict[currSlidId].coalesce()
-    return segmentDict
+# Load triggers, time-slides, and segment dictionary
+#trigs = load_triggers(trig_file, vetoes, ifos)
+# import MultiInspiralUtils
+# import pdb
+# pdb.set_trace()
+# trigs, slide_dict, segment_dict = \
+#     MultiInspiralUtils.ReadMultiInspiralTimeSlidesFromFiles([trig_file])
+trigs = load_xml_table(trig_file, lsctables.MultiInspiralTable.tableName)
+#trigs = load_xml_table(trig_file, "multi_inspiral")
+slide_dict = load_time_slides(trig_file)
+segment_dict = load_segment_dict(trig_file)
 
-def load_multi_inspiral(xmldoc):
-        return table.get_table(xmldoc, "multi_inspiral")
+# Identify the zero-lag slide
+# TODO: turn most/all into a single function with load_time_slides?
+#load_triggers does a lot of this
+num_slides = len(slide_dict)
+zero_lag_count = [np.count_nonzero(slide_dict[i].values()) for i in range(num_slides)]
+zero_lag_slide_id = zero_lag_count.index(0)
+if np.count_nonzero(np.array(zero_lag_count)==0) != 1:
+    msg = "slide_dict should contain exactly one zero lag slide"
+    logging.err(msg)
+    sys.exit()
 
-# =============================================================================
-# Main function
-# =============================================================================
+logging.info("%d triggers loaded at %d." % (len(trigs), elapsed_time()))
 
-def main(segdir, outdir, trigFile, foundFile, missedFile,\
-                  onsourceFile, verbose=False, doinj=False, chisq_index=4.0,\
-                  chisq_nhigh=3.0, null_thresh=(4.25,6),snrThresh=6.0,snglSnrThresh=4.0,\
-                  newSnrThresh=6.0,nullGradThresh=20.,\
-                  nullGradVal=0.2, glitchCheckFac=1.0,\
-                  clusterWindow=0.1, upperDist=100, lowerDist=0, numBins=20,\
-                  vetoFiles=[], wavErr=0, calErrs=None, calDCErrs=None,\
-                  massBins=[[0,3.48], [3.48,6.], [6.,20]], numMCInjs=100,\
-                  oldCode=False,segLength=None,padData=None):
-
-    #
-    # setup
-    #
-
-    # set output directory
-    vprint("setting output directory")
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
-
-    #
-    # load triggers 
-    #
-
-    # FIXME: This is nasty, we actually read the file twice, can we fix this?
-    ifos = extract_ifos(trigFile)
-    ifoAtt = {'G1':'g', 'H1':'h1', 'H2':'h2', 'L1':'l', 'V1':'v', 'T1':'t'}
-
-    # import MultiInspiralUtils
-    # import pdb
-    # pdb.set_trace()
-    # trigs, slideDict, segmentDict = \
-    #     MultiInspiralUtils.ReadMultiInspiralTimeSlidesFromFiles([trigFile])
-    xmldoc = load_xml_file(trigFile)
-    trigs = load_multi_inspiral(xmldoc)
-    slideDict = load_time_slides(xmldoc)
-    segmentDict = load_segment_dict(xmldoc)
-
-
-    # Identify the zero-lag slide
-    numSlides = len(slideDict)
-    zero_lag_count = [np.count_nonzero(slideDict[i].values()) for i in range(numSlides)]
-    zeroLagSlideID = zero_lag_count.index(0)
-    if np.count_nonzero(np.array(zero_lag_count)==0) != 1:
-        raise ValueError, "slideDict should contain exactly one zero lag slide"
-
-
-    vprint("%d triggers loaded at %d.\n"\
-                                                              % (len(trigs), elapsed_time()))
-
-
-    #
-    # get segments
-    #
-
-    segs = readSegFiles(segdir)
+# Get segments
+segs = readSegFiles(segdir)
   
-    # separate segments
-    trialTime           = abs(segs['on'])
+# Separate segments
+trial_time = abs(segs['on'])
 
-    #
-    # get vetoes
-    #
+# Construct trials
+trials = segments.segmentlist()
+trial_dict = {}
+sorted_trigs = {}
 
-    # Construct veto list
-    vetoes = extract_vetoes(vetoFiles, ifos)
-    #
-    # construct trials
-    #
-    
-    trials = segments.segmentlist()
-    trialDict = {}
-    sortedTrigs = {}
+# Loop over the various slides
+sorted_trig_count = 0
+tmp_table = lsctables.New(lsctables.MultiInspiralTable)
+for slide_id in range(num_slides):
+    # Begin by sorting the triggers into each slide
+    # It seems that New is pretty slow, so run it once and then use deepcopy
+    sorted_trigs[slide_id] = copy.deepcopy(tmp_table)
 
-    # Loop over the various slides
-    sortedTrigCount = 0
-    tmpTable = lsctables.New(lsctables.MultiInspiralTable)
-    for slideID in range(numSlides):
-        # Begin by sorting the triggers into each slide
-        # It seems that New is pretty slow, so run it once and then use deepcopy
-        sortedTrigs[slideID] = copy.deepcopy(tmpTable)
+for trig in trigs:
+    sorted_trigs[int(trig.time_slide_id)].append(trig)
 
-    for trig in trigs:
-        sortedTrigs[int(trig.time_slide_id)].append(trig)
+for slide_id in range(num_slides):
+    sorted_trig_count += len(sorted_trigs[slide_id])
 
-    for slideID in range(numSlides):
-        sortedTrigCount += len(sortedTrigs[slideID])
+    # These can only *reduce* the analysis time
+    curr_seg_list = segment_dict[slide_id]
 
-        # These can only *reduce* the analysis time
-        currSegList = segmentDict[slideID]
+    ###### TODO:below is a check we can possibly remove #####
+    # Check the triggers are all in the analysed segment lists
+    for trig in sorted_trigs[slide_id]:
+        if trig.end_time not in curr_seg_list:
+            # This can be raised if the trigger is on the segment boundary, so
+            # check if the trigger is within 1/100 of a second within the list
+            if (trig.get_end() + 0.01) in curr_seg_list:
+                    continue
+            if (trig.get_end() - 0.01) in curr_seg_list:
+                    continue
+            err_msg = "Triggers found in input files not in the list of analysed " 
+            err_msg += "segments. This shouldn't happen."
+            logging.err(err_msg)
+            sys.exit()
+    ###### end of check #####
 
-        ###### below is a check we can possibly remove #####
-        # Check the triggers are all in the analysed segment lists
-        for trig in sortedTrigs[slideID]:
-            if trig.end_time not in currSegList:
-                # This can be raised if the trigger is on the segment boundary, so
-                # check if the trigger is within 1/100 of a second within the list
-                if (trig.get_end() + 0.01) in currSegList:
-                        continue
-                if (trig.get_end() - 0.01) in currSegList:
-                        continue
-                err_msg = "Triggers found in input files not in the list of analysed " 
-                err_msg += "segments. This shouldn't happen."
-                raise ValueError(err_msg)
-        ###### end of check #####
+
+
+# FP: HERE
+
 
         # Construct the buffer segment list
         buffer = segments.segmentlist()
         for ifo in ifos:
-            slideOffset = slideDict[slideID][ifo]
+            slideOffset = slide_dict[slide_id][ifo]
             buffer.append( segments.segment( segs['buffer'][0] - slideOffset,\
                                                                               segs['buffer'][1] - slideOffset))
         buffer.coalesce() 
@@ -441,7 +212,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         # Construct the ifo list
         slidVetoes = copy.deepcopy(vetoes)
         for ifo in ifos:
-            slidVetoes[ifo].shift(-slideDict[slideID][ifo])
+            slidVetoes[ifo].shift(-slide_dict[slide_id][ifo])
         
         #### load_triggers uses the timeslide vetoes to veto trigs
         #### but the below will veto an entire offtrial if there is a
@@ -454,29 +225,29 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         #### last bin that has a trial <6s. This might explain why a 
         #### really loud trigger that appears in offsource doesn't appear
         #### in the bestNRs list, or affect FAP.
-        #### this is the only time the segmentDict and currSegList is used
+        #### this is the only time the segment_dict and curr_seg_list is used
   
         # Construct trial list and check against buffer      
-        trialDict[slideID] = segments.segmentlist()
-        for currSeg in currSegList:
+        trial_dict[slide_id] = segments.segmentlist()
+        for currSeg in curr_seg_list:
             iterInt = 0
             while 1:
-                if (currSeg[0] + trialTime*(iterInt+1)) > currSeg[1]:
+                if (currSeg[0] + trial_time*(iterInt+1)) > currSeg[1]:
                     break
-                currTrial = segments.segment(currSeg[0] + trialTime*iterInt,\
-                                                                          currSeg[0] + trialTime*(iterInt+1))
+                currTrial = segments.segment(currSeg[0] + trial_time*iterInt,\
+                                                                          currSeg[0] + trial_time*(iterInt+1))
                 if not buffer.intersects_segment(currTrial):
                     for ifo in ifos:
                         if slidVetoes[ifo].intersects_segment(currTrial):
                             break
                     else:
-                        trialDict[slideID].append(currTrial)
+                        trial_dict[slide_id].append(currTrial)
                 iterInt += 1
         # the below line works like the inverse of .veto and only returns trigs 
-        # that are within the segment specified by trialDict[slideID]
-        sortedTrigs[slideID] = sortedTrigs[slideID].vetoed(trialDict[slideID])
+        # that are within the segment specified by trial_dict[slide_id]
+        sorted_trigs[slide_id] = sorted_trigs[slide_id].vetoed(trial_dict[slide_id])
 
-    totalTrials = sum([len(trialDict[slideID]) for slideID in range(numSlides)]) 
+    totalTrials = sum([len(trial_dict[slide_id]) for slide_id in range(num_slides)]) 
 
     vprint("Segments loaded and %d trials generated at %d."\
                                                               "\n" % (totalTrials, elapsed_time()))
@@ -490,19 +261,19 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     trigAllBestNR = {}
     trigAllMchirp = {}
     
-    for slideID in range(numSlides):
+    for slide_id in range(num_slides):
         # get basics
-        slideTrigs = sortedTrigs[slideID]
-        trigAllTime[slideID]   = np.asarray(slideTrigs.get_end()).astype(float)
-        trigAllSNR[slideID]    = np.asarray(slideTrigs.get_column('snr'))
-        trigAllBestNR[slideID] = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
+        slideTrigs = sorted_trigs[slide_id]
+        trigAllTime[slide_id]   = np.asarray(slideTrigs.get_end()).astype(float)
+        trigAllSNR[slide_id]    = np.asarray(slideTrigs.get_column('snr'))
+        trigAllBestNR[slide_id] = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
                                                           null_thresh=null_thresh,snr_threshold=snrThresh,\
                                                           sngl_snr_threshold = snglSnrThresh,\
                                                           chisq_threshold = newSnrThresh,\
                                                           null_grad_thresh = nullGradThresh,\
                                                           null_grad_val = nullGradVal) for t in slideTrigs]
-        trigAllBestNR[slideID] = np.array(trigAllBestNR[slideID])
-        trigAllMchirp[slideID] = np.asarray(slideTrigs.get_column('mchirp'))
+        trigAllBestNR[slide_id] = np.array(trigAllBestNR[slide_id])
+        trigAllMchirp[slide_id] = np.asarray(slideTrigs.get_column('mchirp'))
 
     vprint("Basic columns extracted at %d.\n"\
                                                           % elapsed_time())
@@ -517,24 +288,24 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     # define mass bins
     massBin = lambda mc: [i for i,b in enumerate(massBins) if b[0]<=mc<b[1]][0]
 
-    for slideID in range(numSlides):
-        numSlideSegs = len(trialDict[slideID]) 
+    for slide_id in range(num_slides):
+        num_slide_segs = len(trial_dict[slide_id]) 
         # define arrays for mass bins
-        trigTime[slideID]   = {}
-        trigSNR[slideID]    = {}
-        trigBestNR[slideID] = {}
-        timeBinVetoMaxSNR[slideID] = np.zeros([len(massBins)+1, numSlideSegs])
-        timeBinVetoMaxBestNR[slideID] = np.zeros([len(massBins)+1, numSlideSegs])
-        timeBinVetoMaxSNRUncut[slideID] = np.zeros([len(massBins)+1, numSlideSegs])
+        trigTime[slide_id]   = {}
+        trigSNR[slide_id]    = {}
+        trigBestNR[slide_id] = {}
+        timeBinVetoMaxSNR[slide_id] = np.zeros([len(massBins)+1, num_slide_segs])
+        timeBinVetoMaxBestNR[slide_id] = np.zeros([len(massBins)+1, num_slide_segs])
+        timeBinVetoMaxSNRUncut[slide_id] = np.zeros([len(massBins)+1, num_slide_segs])
 
     # Check for triggers outside of mass bins if verbose
     if verbose:
         numCut = 0
-        for slideID in range(numSlides):
-            inMassBins = np.zeros(len(sortedTrigs[slideID])).astype(np.bool) 
+        for slide_id in range(num_slides):
+            inMassBins = np.zeros(len(sorted_trigs[slide_id])).astype(np.bool) 
             for i,bin in enumerate(massBins):
-                massCut = (bin[0] <= trigAllMchirp[slideID])\
-                                & (trigAllMchirp[slideID] < bin[1])
+                massCut = (bin[0] <= trigAllMchirp[slide_id])\
+                                & (trigAllMchirp[slide_id] < bin[1])
                 inMassBins = inMassBins | massCut
             inMassBins = ~inMassBins
             if inMassBins.any():
@@ -544,43 +315,43 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
             sys.stderr.write("These %d triggers will be vetoed.\n" \
                                               %(numCut))
 
-    for slideID in range(numSlides):
+    for slide_id in range(num_slides):
         # separate triggers by mass bin and record maxima for each trial
         for i,bin in enumerate(massBins):
             # construct massCut
-            massCut = (bin[0] <= trigAllMchirp[slideID]\
-                        ) & (trigAllMchirp[slideID] < bin[1])
+            massCut = (bin[0] <= trigAllMchirp[slide_id]\
+                        ) & (trigAllMchirp[slide_id] < bin[1])
             # apply cut
-            trigTime[slideID][bin[0]]   = trigAllTime[slideID][massCut]
-            trigSNR[slideID][bin[0]]    = trigAllSNR[slideID][massCut]
-            trigBestNR[slideID][bin[0]] = trigAllBestNR[slideID][massCut]
+            trigTime[slide_id][bin[0]]   = trigAllTime[slide_id][massCut]
+            trigSNR[slide_id][bin[0]]    = trigAllSNR[slide_id][massCut]
+            trigBestNR[slide_id][bin[0]] = trigAllBestNR[slide_id][massCut]
 
             k = 0
-            for j,trial in enumerate(trialDict[slideID]):
-                trialCut = (trial[0] <= trigTime[slideID][bin[0]])\
-                                  & (trigTime[slideID][bin[0]] < trial[1])
+            for j,trial in enumerate(trial_dict[slide_id]):
+                trialCut = (trial[0] <= trigTime[slide_id][bin[0]])\
+                                  & (trigTime[slide_id][bin[0]] < trial[1])
                 if not trialCut.any():  continue
                 # max SNR in this mass bin and all mass bins
-                timeBinVetoMaxSNR[slideID][i,j] = \
-                                max(trigSNR[slideID][bin[0]][trialCut])
-                timeBinVetoMaxSNR[slideID][-1,j] = \
-                                max(timeBinVetoMaxSNR[slideID][-1,j],\
-                                        timeBinVetoMaxSNR[slideID][i,j])
+                timeBinVetoMaxSNR[slide_id][i,j] = \
+                                max(trigSNR[slide_id][bin[0]][trialCut])
+                timeBinVetoMaxSNR[slide_id][-1,j] = \
+                                max(timeBinVetoMaxSNR[slide_id][-1,j],\
+                                        timeBinVetoMaxSNR[slide_id][i,j])
                 # max BestNR in this mass bin and all mass bins
-                timeBinVetoMaxBestNR[slideID][i,j]  = \
-                                max(trigBestNR[slideID][bin[0]][trialCut])
-                timeBinVetoMaxBestNR[slideID][-1,j] = \
-                                max(timeBinVetoMaxBestNR[slideID][-1,j],\
-                                        timeBinVetoMaxBestNR[slideID][i,j])
+                timeBinVetoMaxBestNR[slide_id][i,j]  = \
+                                max(trigBestNR[slide_id][bin[0]][trialCut])
+                timeBinVetoMaxBestNR[slide_id][-1,j] = \
+                                max(timeBinVetoMaxBestNR[slide_id][-1,j],\
+                                        timeBinVetoMaxBestNR[slide_id][i,j])
 
                 # max SNR for triggers passing SBVs in this mass bin and all mass bins
-                sbvCut = trigBestNR[slideID][bin[0]]!=0
+                sbvCut = trigBestNR[slide_id][bin[0]]!=0
                 if not (trialCut&sbvCut).any():  continue
-                timeBinVetoMaxSNRUncut[slideID][i,j] =\
-                                  max(trigSNR[slideID][bin[0]][trialCut & sbvCut])
-                timeBinVetoMaxSNRUncut[slideID][-1,j] =\
-                                  max(timeBinVetoMaxSNRUncut[slideID][-1,j],\
-                                          timeBinVetoMaxSNRUncut[slideID][i,j])
+                timeBinVetoMaxSNRUncut[slide_id][i,j] =\
+                                  max(trigSNR[slide_id][bin[0]][trialCut & sbvCut])
+                timeBinVetoMaxSNRUncut[slide_id][-1,j] =\
+                                  max(timeBinVetoMaxSNRUncut[slide_id][-1,j],\
+                                          timeBinVetoMaxSNRUncut[slide_id][i,j])
 
     vprint("%d mass bins seeded and SNR/bestNR maxima "\
                                                               "calculated at %d.\n"\
@@ -593,9 +364,9 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     quietestFap = []
     for binNum in range(len(massBins)):
         numEvents = 0
-        for slideID in range(numSlides):
-            for trial in range(len(trialDict[slideID])):
-                if timeBinVetoMaxBestNR[slideID][binNum,trial] > 0:
+        for slide_id in range(num_slides):
+            for trial in range(len(trial_dict[slide_id])):
+                if timeBinVetoMaxBestNR[slide_id][binNum,trial] > 0:
                     numEvents += 1
         quietestFap.append(numEvents/totalTrials)
 
@@ -609,8 +380,8 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
     #
 
     offSourceTrigs = []
-    for slideID in range(numSlides):
-        offSourceTrigs.extend( zip(trigAllBestNR[slideID],sortedTrigs[slideID]))
+    for slide_id in range(num_slides):
+        offSourceTrigs.extend( zip(trigAllBestNR[slide_id],sorted_trigs[slide_id]))
     offSourceTrigs.sort(key = lambda element:element[0])
     offSourceTrigs.reverse()
 
@@ -644,7 +415,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
         # Get trial of trigger, triggers with 'No trial' should have been removed!
         endTime = trig.get_end()
-        for j,trial in enumerate(trialDict[trigSlideID]):
+        for j,trial in enumerate(trial_dict[trigSlideID]):
             if trig.get_end() in trial:
                 chunkNum = j
                 break
@@ -653,8 +424,8 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
         # Get FAP of trigger
         numTrialsLouder = 0
-        for slideID in range(numSlides):
-            for val in timeBinVetoMaxBestNR[slideID][trigBinNum]:
+        for slide_id in range(num_slides):
+            for val in timeBinVetoMaxBestNR[slide_id][trigBinNum]:
                 if val > bestNR:
                     numTrialsLouder += 1
         FAP = numTrialsLouder/totalTrials
@@ -669,9 +440,9 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
                     '%.2f' % (np.degrees(trig.ra)), '%.2f'% (np.degrees(trig.dec)),\
                     '%.2f' % trig.snr, '%.2f' % trig.chisq, '%.2f' % trig.bank_chisq,\
                     '%.2f' % trig.cont_chisq, '%.2f' % nullsnr ]
-        d.extend([ '%.2f' % getattr(trig,'snr_%s' % ifoAtt[ifo])\
+        d.extend([ '%.2f' % getattr(trig,'snr_%s' % ifo_att[ifo])\
                               for ifo in ifos ])
-        d.extend([ slideDict[trigSlideID][ifo] for ifo in ifos])
+        d.extend([ slide_dict[trigSlideID][ifo] for ifo in ifos])
         d.append('%.2f' % bestNR)
         td.append(d)
 
@@ -711,20 +482,20 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         fullTimeBinVetoMaxSNR[binNum] = []
         fullTimeBinVetoMaxSNRUncut[binNum] = []
         fullTimeBinVetoMaxBestNR[binNum] = []
-        for slideID in range(numSlides):
-            fullTimeBinVetoMaxSNR[binNum].extend(timeBinVetoMaxSNR[slideID][binNum])
+        for slide_id in range(num_slides):
+            fullTimeBinVetoMaxSNR[binNum].extend(timeBinVetoMaxSNR[slide_id][binNum])
             fullTimeBinVetoMaxSNRUncut[binNum].extend(\
-                            timeBinVetoMaxSNRUncut[slideID][binNum])
+                            timeBinVetoMaxSNRUncut[slide_id][binNum])
             fullTimeBinVetoMaxBestNR[binNum].extend(\
-                            timeBinVetoMaxBestNR[slideID][binNum])
+                            timeBinVetoMaxBestNR[slide_id][binNum])
         fullTimeBinVetoMaxSNR[binNum].sort()
         fullTimeBinVetoMaxSNRUncut[binNum].sort()
         fullTimeBinVetoMaxBestNR[binNum].sort()
         
     binNum = 0
     for bin in massBins:
-        maxSNR[bin[0]]    = max([trigSNR[slideID][bin[0]].max() if len(trigSNR[slideID][bin[0]]) else 0 for slideID in range(numSlides) ])
-        maxBestNR[bin[0]] = max([trigBestNR[slideID][bin[0]].max() if len(trigSNR[slideID][bin[0]]) else 0 for slideID in range(numSlides) ])
+        maxSNR[bin[0]]    = max([trigSNR[slide_id][bin[0]].max() if len(trigSNR[slide_id][bin[0]]) else 0 for slide_id in range(num_slides) ])
+        maxBestNR[bin[0]] = max([trigBestNR[slide_id][bin[0]].max() if len(trigSNR[slide_id][bin[0]]) else 0 for slide_id in range(num_slides) ])
   
         if (totalTrials % 2):
             medianSNR[bin[0]] = (fullTimeBinVetoMaxSNR[binNum])\
@@ -839,8 +610,8 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
             if loudOnBestNRTrigs[bin[0]]:
                 trig = loudOnBestNRTrigs[bin[0]]
                 numTrialsLouder = 0
-                for slideID in range(numSlides):
-                    numTrialsLouder += sum(timeBinVetoMaxBestNR[slideID][i] > \
+                for slide_id in range(num_slides):
+                    numTrialsLouder += sum(timeBinVetoMaxBestNR[slide_id][i] > \
                                                                   loudOnBestNR[bin[0]])
                 FAP = numTrialsLouder/totalTrials
                 pval = '< %.3g' % (1./totalTrials) if FAP==0 else '%.3g' % FAP
@@ -978,7 +749,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
         foundInjInc      = np.asarray(foundInjs.get_column('inclination'))
         foundTrigSNR     = np.asarray(foundTrigs.get_column('snr'))
-        foundTrigChisq   = np.asarray(foundTrigs.get_column('chisq'))
+        foundTrig_chisq   = np.asarray(foundTrigs.get_column('chisq'))
         foundTrigBank    = np.asarray(foundTrigs.get_column('bank_chisq'))
         foundTrigAuto    = np.asarray(foundTrigs.get_column('cont_chisq'))
         foundTrigNullSNR = np.asarray(foundTrigs.get_null_snr())
@@ -1067,7 +838,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         gIFARRecDec       = foundTrigDec[nonzeroFAP]
 
         gIFARSNR          = foundTrigSNR[nonzeroFAP]
-        gIFARChisq        = foundTrigChisq[nonzeroFAP]
+        gIFARChisq        = foundTrig_chisq[nonzeroFAP]
         gIFARBank         = foundTrigBank[nonzeroFAP]
         gIFARAuto         = foundTrigAuto[nonzeroFAP]
         gIFARNull         = foundTrigNullSNR[nonzeroFAP]
@@ -1105,7 +876,7 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
         gMissed2Inc       = foundInjInc[missed]
 
         gMissed2SNR       = foundTrigSNR[missed]
-        gMissed2Chisq     = foundTrigChisq[missed]
+        gMissed2Chisq     = foundTrig_chisq[missed]
         gMissed2Bank      = foundTrigBank[missed]
         gMissed2Auto      = foundTrigAuto[missed]
         gMissed2Null      = foundTrigNullSNR[missed]
@@ -1358,11 +1129,11 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
                 for j,(t,bestNR) in enumerate(zip(foundInjTime[foundExcl],\
                                                                                     foundTrigBestNR[foundExcl])):
                     if j==0:
-                        print(zeroLagSlideID)
-                        print(len(trigAllBestNR[zeroLagSlideID]))
+                        print(zero_lag_slide_id)
+                        print(len(trigAllBestNR[zero_lag_slide_id]))
                         print(np.shape(np.array(trigAllBestNR)))
-                    nearBestNR  = trigAllBestNR[zeroLagSlideID]\
-                                                [np.abs(trigAllTime[zeroLagSlideID]-t) < clusterWindow]
+                    nearBestNR  = trigAllBestNR[zero_lag_slide_id]\
+                                                [np.abs(trigAllTime[zero_lag_slide_id]-t) < clusterWindow]
                     nearTest[j] = ~((nearBestNR * glitchCheckFac > bestNR).any())
                 # apply the local test, putmask doesn't seem to work...
                 #np.putmask(foundExcl, foundExcl==True, nearTest)
@@ -2058,13 +1829,16 @@ def main(segdir, outdir, trigFile, foundFile, missedFile,\
 
     vprint("Plots complete at %d.\n" % elapsed_time())
 
+
+
+
 if __name__=='__main__':
 
     opts, args = parse_command_line()
 
     segdir       = opts.segment_dir
     outdir       = opts.output_path
-    trigFile     = opts.offsource_file
+    trig_file     = opts.offsource_file
     foundFile    = opts.found_file
     missedFile   = opts.missed_file
     onsourceFile = opts.onsource_file
@@ -2106,7 +1880,7 @@ if __name__=='__main__':
     segLength = opts.segment_length
     padData = opts.pad_data
     rc('font', size=14)
-    main(segdir, outdir, trigFile, foundFile, missedFile,\
+    main(segdir, outdir, trig_file, foundFile, missedFile,\
               onsourceFile, verbose=verbose, doinj=doinj, chisq_index=q,\
               chisq_nhigh=n, null_thresh = nullt , snrThresh=snrThresh,\
               snglSnrThresh=snglSnrThresh,newSnrThresh=newSnrThresh,\

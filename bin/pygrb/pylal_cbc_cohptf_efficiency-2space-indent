@@ -47,7 +47,7 @@ from glue.ligolw import table,lsctables,utils,ligolw
 from pycbc import __version__
 from pycbc.detector import Detector
 import pycbc.results
-from pycbc.results.pygrb_plotting_utils import extract_vetoes, extract_ifos, load_xml_file
+from pycbc.results.pygrb_postprocessing_utils import extract_vetoes, extract_ifos, load_xml_file
 
 from pylal.coh_PTF_pyutils import get_bestnr,readSegFiles,get_f_resp
 # import MultiInspiralUtils
@@ -255,7 +255,7 @@ def parse_command_line():
   return opts, args
 
 def get_antenna_response(ra, dec, geocent_time, ifo):
-  """This function should be moved to pygrb_plotting_utils to replace 
+  """This function should be moved to pygrb_postprocessing_utils to replace 
   get_f_resp.
   """
   i = Detector(ifo)
