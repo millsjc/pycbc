@@ -180,7 +180,7 @@ segment_dict = load_segment_dict(trig_file)
 
 # Identify the zero-lag slide
 # TODO: turn most/all into a single function with load_time_slides?
-#load_triggers does a lot of this
+#       load_triggers does a lot of this
 num_slides = len(slide_dict)
 zero_lag_count = [np.count_nonzero(slide_dict[i].values()) for i in range(num_slides)]
 zero_lag_slide_id = zero_lag_count.index(0)
@@ -715,6 +715,8 @@ pygrb_shared_plot_setups()
     #
     # Now we can start dealing with the injections
     #
+# TODO: turn most/all into a single function with load_time_slides?
+#       load_triggers does a lot of this
 
     if doinj:
 
@@ -1345,6 +1347,10 @@ pygrb_shared_plot_setups()
         np.savetxt(f, stacked, fmt='%.8e', delimiter='\t')
         f.close()
 
+
+
+
+###### Lots of plots start here --> funciton(s)!!!
         # plot efficiency
         fig = plt.figure()
         ax = fig.gca()
