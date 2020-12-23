@@ -670,48 +670,45 @@ if onsource_file:
                                                title=title,
                                                caption=caption)
 
-# FP: HERE
 
 # Make the cumulative histogram FAP plots
 # TODO: all plots should be calls to function(s)
 pygrb_shared_plot_setups()
-    # Plot cumulative histograms
-    for i,bin in enumerate(mass_bins):
-        np.savetxt('%s/bestnr_vs_fap_%s_%s_numbers.txt' %(outdir, bin[0], bin[1]),
-                              full_time_bin_veto_max_bestnr[i], delimiter='/t')
-        fig = plt.figure()
-        ax = fig.gca()
-        cumplot = plotutils.CumulativeHistogramPlot("BestNR",
-                                                                                                  "False alarm probability",
-                                                                                                  "")
-        cumplot.add_background([item] for item in full_time_bin_veto_max_bestnr[i])
-        cumplot.finalize(num_bins=50)
-        cumplot.ax.set_ylim(ymax=1.2)
-        cumplot.savefig('%s/bestnr_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1]))
-        plt.close()
 
-        fig = plt.figure()
-        ax = fig.gca()
-        cumplot = plotutils.CumulativeHistogramPlot("SNR",
-                                                                                                  "False alarm probability",
-                                                                                                  "")
-        cumplot.add_background([item] for item in full_time_bin_veto_max_snr[i])
-        cumplot.finalize(num_bins=50)
-        cumplot.ax.set_ylim(ymax=1.2)
-        cumplot.savefig('%s/snr_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1]))
-        plt.close()
+# FIXME: Quick shot still using pylal. Use PyCBC and move to pygrb_postprocessing_utils.py
+def pygrb_histogram(data, xlabel, ylabel, fig_path, title=None, ymax=1.2, num_bins=50):
+    fig = plt.figure()
+    ax = fig.gca()
+    cumplot = plotutils.CumulativeHistogramPlot(xlabel, ylabel, title)
+    cumplot.add_background([item] for item in data)
+    cumplot.finalize(num_bins=num_bins)
+    cumplot.ax.set_ylim(ymax=ymax)
+    cumplot.savefig(fig_path)
+    plt.close()
 
-        fig = plt.figure()
-        ax = fig.gca()
-        cumplot = plotutils.CumulativeHistogramPlot("SNR after signal based vetoes",
-                                                                                                  "False alarm probability",
-                                                                                                  "")
-        cumplot.add_background([item] for item in full_time_bin_veto_max_snr_uncut[i])
-        cumplot.finalize(num_bins=50)
-        cumplot.ax.set_ylim(ymax=1.2)
-        cumplot.savefig('%s/snruncut_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1]))
-        plt.close()
+# Plot cumulative histograms
+for i,bin in enumerate(mass_bins):
+    np.savetxt('%s/bestnr_vs_fap_%s_%s_numbers.txt' %(outdir, bin[0], bin[1]),
+                          full_time_bin_veto_max_bestnr[i], delimiter='/t')
+    # Histo 1
+    fig_path = '%s/bestnr_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1])
+    pygrb_histogram(full_time_bin_veto_max_bestnr[i],
+                    "BestNR", "False alarm probability",
+                    fig_path)
 
+    # Histo 2
+    fig_path = '%s/snr_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1])
+    pygrb_histogram(full_time_bin_veto_max_snr[i],
+                    "SNR", "False alarm probability",
+                    fig_path)
+
+    # Histo 3 
+    fig_path = '%s/snruncut_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1])
+    pygrb_histogram(full_time_bin_veto_max_snr_uncut[i],
+                    "SNR after signal based vetoes", "False alarm probability",
+                    fig_path)
+
+# FP: HERE
     #
     # Now we can start dealing with the injections
     #
