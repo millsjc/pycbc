@@ -286,7 +286,7 @@ total_trials = sum([len(trial_dict[slide_id]) for slide_id in range(num_slides)]
 msg = "Segments loaded and %d trials generated." % (total_trials)
 logging.info(msg)
 
-# Extract variables 
+# Extract variables
 # TODO: do something along the lines of PygrbFilterOutput
 trig_all_time = {}
 trig_all_snr = {}
