@@ -718,6 +718,7 @@ for i,bin in enumerate(mass_bins):
     #
 # TODO: turn most/all into a single function with load_time_slides?
 #       load_triggers does a lot of this
+# I don't think the following was indented originally. We have to check.
 
     if doinj:
 
