@@ -233,7 +233,7 @@ for slide_id in range(num_slides):
             err_msg += "analysed segments. This should not happen."
             logging.err(err_msg)
             sys.exit()
-        ###### end of check #####
+    ###### end of check #####
 
     # Construct the buffer segment list
     buffer = segments.segmentlist()
@@ -406,18 +406,20 @@ for val in quietest_fap:
     print >> quietest_file, val
 quietest_file.close()
 
-# Output details of 30 loudest offsouce triggers
+# Output details of (at most) 30 loudest offsouce triggers
+# TODO: Do we really want this hard-coded 30?
 offsource_trigs = []
 for slide_id in range(num_slides):
     trial_endtimes = [s[1] for s in trial_dict[slide_id]]
     trig_endtimes = [trig.get_end() for trig in sorted_trigs[slide_id]]
     trial_ids = np.searchsorted(trial_endtimes, trig_endtimes)
-    offsource_trigs.extend( zip(trig_all_bestnr[slide_id],sorted_trigs[slide_id], trial_ids))
-    # offsource_trigs.extend( zip(trig_all_bestnr[slide_id],sorted_trigs[slide_id]))
+    offsource_trigs.extend(zip(trig_all_bestnr[slide_id],sorted_trigs[slide_id], trial_ids))
+    # offsource_trigs.extend(zip(trig_all_bestnr[slide_id],sorted_trigs[slide_id]))
 offsource_trigs.sort(key = lambda element:element[0])
 offsource_trigs.reverse()
 
-#TODO: we also want the templates spin1z and spin2z
+#TODO: we also want the templates spin1z and spin2z. Do this after switch to hdf5
+# th: table header
 th = [ 'Mass Bin', 'Trial', 'Slide Num', 'FAP', 'GPS',\
        'Rec. m1', 'Rec. m2', 'Rec. Mc',\
        'Rec. RA','Rec. Dec', 'SNR', 'Chi^2', 'Bank veto', 'Auto veto',\
@@ -425,6 +427,7 @@ th = [ 'Mass Bin', 'Trial', 'Slide Num', 'FAP', 'GPS',\
 th.extend([ '%s SNR' % ifo for ifo in ifos ])
 th.extend([ '%s time shift (s)' % ifo for ifo in ifos ])
 th.append('BestNR')
+# td: table data
 td = []
 
 for i in range(min(len(offsource_trigs), 30)):
@@ -485,7 +488,7 @@ for i in range(min(len(offsource_trigs), 30)):
     td.append(d)
 
 # Write to html file 
-# TODO (hold for most htmls below too): make this table sortable by column and not static
+# TODO (holds for most htmls below too): make this table sortable by column and not static
 html = pycbc.results.dq.redirect_javascript + str(pycbc.results.static_table(td, th))
 # TODO (hold for most htmls below too): Should pass output_file arg on command line and put this in a seperate executable
 title = 'Parameters of loudest offsource triggers'
@@ -586,10 +589,10 @@ if onsource_file:
 
     # Get trigs
     on_trigs = load_xml_table(onsource_file, "multi_inspiral")
-    # Separate off mass column
-    on_mchirp = on_trigs.get_column('mchirp')
-
     msg = "%d onsource triggers loaded." % (len(on_trigs))
+
+    # Separate off chirp mass column
+    on_mchirp = on_trigs.get_column('mchirp')
 
     # Set loudest event arrays
     loud_on_bestnr_trigs = dict((bin[0], None) for bin in mass_bins)
@@ -629,7 +632,8 @@ if onsource_file:
 
     logging.info("Onsource analysed.")
 
-
+    # Table header and table data
+    # TODO we will want the spins too (easier to deal with after move to hdf5)
     th = ['Bin', 'FAP', 'GPS', 'Rec. m1', 'Rec. m2', 'Rec. Mc', 'Rec. RA',\
           'Rec. Dec', 'SNR', 'Chi^2', 'Bank veto', 'Auto veto', 'Null SNR'] +\
          ['%s SNR' % ifo for ifo in ifos ] + ['BestNR']
@@ -673,6 +677,13 @@ if onsource_file:
                                                cmd=' '.join(sys.argv),
                                                title=title,
                                                caption=caption)
+else:
+    for i,bin in enumerate(massBins):
+        totOffSNR = np.array([])
+        for slideID in range(numSlides):
+            totOffSNR = np.concatenate([totOffSNR,timeBinVetoMaxBestNR[slideID][i]])
+        medSNR = np.median(totOffSNR)
+        FAP = sum(totOffSNR>medSNR)/totalTrials
 
 
 # Make the cumulative histogram FAP plots
