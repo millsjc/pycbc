@@ -62,24 +62,6 @@ description = 'Efficiency calculator for the triggered search (PyGRB).'
 usage = __program__ + ' [--options]'
 opts = pygrb_plot_opts_parser(usage=usage, description=description, version=__version__)
 
-# TODO: Deprecated options: remove all over and then here
-# NB: mass-bins is currently coded in pygrb_postprocessing_utils too. Remove later.
-# opts.add_argument("--mass-bins", type=str, default="0-3.48,3.48-6,6-20",\
-#                     help="comma separated list of dash-separated pairs "\
-#                             "of m_low-m_high mass bins, default: %default")
-#calopts.add_option("-q", "--h2-cal-error", action="store",\
-#                                      type="float", default=0,
-#                                      help="The standard deviation to use when calculating the "\
-#                                                "H2 calibration amplitude error.")
-#calopts.add_option("-P", "--h2-dc-cal-error", action="store",\
-#                                      type="float", default=1.0,
-#                                      help="The scaling factor to use when calculating the H2 "\
-#                                                  "calibration amplitude error.")
-#parser.add_option("-S", "--old-code", action="store_true", default=False,\
-#                                    help="Use this flag if the old coh_PTF_inspiral, in" +\
-#                                              "which ra,dec was not time dependent was used" +\
-#                                              ", default: %default")
-
 if opts.verbose:
     level = logging.INFO
 else:
@@ -138,14 +120,11 @@ num_bins = opts.num_bins
 # TODO: appears in other executables. Make it a function
 veto_files = []
 if opts.veto_directory:
-      veto_string = ','.join([str(i) for i in range(2,opts.veto_category+1)])
-      veto_files = glob.glob(opts.veto_directory +'/*CAT[%s]*.xml' %(veto_string))
+    veto_string = ','.join([str(i) for i in range(2,opts.veto_category+1)])
+    veto_files = glob.glob(opts.veto_directory +'/*CAT[%s]*.xml' %(veto_string))
 # TODO: superseded
 mass_bins = map(lambda p: map(float, p.split('-')), opts.mass_bins.split(','))
 num_mc_injs = opts.num_mc_injections
-# TODO: following were unused; remove or add in?
-# seg_length = opts.segment_length
-# pad_data = opts.pad_data
     
 # TODO. Random seed: eventually allow user to specify this
 np.random.seed(1234)
@@ -192,7 +171,7 @@ logging.info("%d triggers loaded." % len(trigs))
 
 # Get segments
 segs = readSegFiles(opts.segment_dir)
-  
+
 # Separate segments
 trial_time = abs(segs['on'])
 

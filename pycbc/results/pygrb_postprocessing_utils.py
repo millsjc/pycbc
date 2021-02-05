@@ -507,7 +507,7 @@ def extract_ifos(trig_file):
 def extract_vetoes(veto_files, ifos):
     """Extracts vetoes from veto filelist"""
 
-    # Initialize vetoe containers
+    # Initialize veto containers
     vetoes = segments.segmentlistdict()
     for ifo in ifos:
         vetoes[ifo] = segments.segmentlist()
