@@ -1089,7 +1089,7 @@ for i,bin in enumerate(mass_bins):
             calDistRed = stats.norm.rvs(size=len(foundInjs)) * cal_error
             wavDistRed = np.abs(stats.norm.rvs(size=len(foundInjs)) * wf_err)
             foundInjDistMC[i+1,:] = foundInjDist / (maxDCCalError * \
-                                                                                        (1 + calDistRed) * (1 + wavDistRed))
+                (1 + calDistRed) * (1 + wavDistRed))
             calDistRed = stats.norm.rvs(size=len(missedInjs)) * cal_error
             wavDistRed = np.abs(stats.norm.rvs(size=len(missedInjs)) * wf_err)
             missedInjDistMC[i+1,:] = missedInjDist / (maxDCCalError *\
@@ -1131,8 +1131,7 @@ for i,bin in enumerate(mass_bins):
             # check louder than on source in this bin
             if onsource_file:
                 foundTrigLoudOnBestNR = np.zeros([len(foundTrigMchirp)])
-                for ix, mc in \
-                                        enumerate(foundTrigMchirp):
+                for ix, mc in enumerate(foundTrigMchirp):
                     try:
                         foundTrigLoudOnBestNR[ix] = loud_on_bestnr[mass_bins[mass_bin(mc)][0]]
                     except IndexError:
@@ -1145,14 +1144,13 @@ for i,bin in enumerate(mass_bins):
                 # check whether injection is found for the purposes of exclusion
                 # distance calculation
                 #
-                # found if more louder than all on source, or louder than
-                # missed if not louder than on loudest on source,
+                # found if louder than all on source, or louder than
+                # missed if not louder than loudest on source,
                 foundExcl = onBestNRCut & (moreSigThanOnSource) & \
                                         (foundTrigBestNR != 0)
                 # if not missed, doublecheck bestNR against nearby triggers
                 nearTest = np.zeros((foundExcl).sum()).astype(bool)
-                for j,(t,bestNR) in enumerate(zip(foundInjTime[foundExcl],\
-                                                                                    foundTrigBestNR[foundExcl])):
+                for j,(t,bestNR) in enumerate(zip(foundInjTime[foundExcl],foundTrigBestNR[foundExcl])):
                     if j==0:
                         print(zero_lag_slide_id)
                         print(len(trig_all_bestnr[zero_lag_slide_id]))
