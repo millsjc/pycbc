@@ -205,9 +205,9 @@ for slide_id in range(num_slides):
             # This can be raised if the trigger is on the segment boundary, so
             # check if the trigger is within 1/100 of a second within the list
             if (trig.get_end() + 0.01) in curr_seg_list:
-                    continue
+                continue
             if (trig.get_end() - 0.01) in curr_seg_list:
-                    continue
+                continue
             err_msg = "Triggers found in input files not in the list of "
             err_msg += "analysed segments. This should not happen."
             logging.err(err_msg)
@@ -219,7 +219,7 @@ for slide_id in range(num_slides):
     for ifo in ifos:
         slide_offset = slide_dict[slide_id][ifo]
         buffer.append(segments.segment(segs['buffer'][0] - slide_offset,\
-                                    segs['buffer'][1] - slide_offset))
+                                       segs['buffer'][1] - slide_offset))
     buffer.coalesce() 
 
     # Construct the ifo list
@@ -247,14 +247,14 @@ for slide_id in range(num_slides):
             while 1:
                 if (curr_seg[0] + trial_time*(iter_int+1)) > curr_seg[1]:
                     break
-                currTrial = segments.segment(curr_seg[0] + trial_time*iter_int,\
+                curr_trial = segments.segment(curr_seg[0] + trial_time*iter_int,\
                                             curr_seg[0] + trial_time*(iter_int+1))
-                if not buffer.intersects_segment(currTrial):
+                if not buffer.intersects_segment(curr_trial):
                     for ifo in ifos:
-                        if slid_vetoes[ifo].intersects_segment(currTrial):
+                        if slid_vetoes[ifo].intersects_segment(curr_trial):
                             break
                     else:
-                        trial_dict[slide_id].append(currTrial)
+                        trial_dict[slide_id].append(curr_trial)
                 iter_int += 1
         # The below line works like the inverse of .veto and only returns trigs 
         # that are within the segment specified by trial_dict[slide_id]
@@ -274,20 +274,20 @@ trig_all_bestnr = {}
 trig_all_mchirp = {}
     
 for slide_id in range(num_slides):
-    # get basics
-    slideTrigs = sorted_trigs[slide_id]
-    trig_all_time[slide_id]    = np.asarray(slideTrigs.get_end()).astype(float)
-    trig_all_snr[slide_id]     = np.asarray(slideTrigs.get_column('snr'))
+    # Get basics
+    slide_trigs = sorted_trigs[slide_id]
+    trig_all_time[slide_id]   = np.asarray(slide_trigs.get_end()).astype(float)
+    trig_all_snr[slide_id]    = np.asarray(slide_trigs.get_column('snr'))
     trig_all_bestnr[slide_id] = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
-                                             null_thresh=null_thresh,\
-                                             snr_threshold=snr_thresh,\
-                                             sngl_snr_threshold=sngl_snr_thresh,\
-                                             chisq_threshold=new_snr_thresh,\
-                                             null_grad_thresh=null_grad_thresh,\
-                                             null_grad_val=null_grad_val) \
-                                   for t in slideTrigs]
+                                            null_thresh=null_thresh,\
+                                            snr_threshold=snr_thresh,\
+                                            sngl_snr_threshold=sngl_snr_thresh,\
+                                            chisq_threshold=new_snr_thresh,\
+                                            null_grad_thresh=null_grad_thresh,\
+                                            null_grad_val=null_grad_val) \
+                                 for t in slide_trigs]
     trig_all_bestnr[slide_id] = np.array(trig_all_bestnr[slide_id])
-    trig_all_mchirp[slide_id]  = np.asarray(slideTrigs.get_column('mchirp'))
+    trig_all_mchirp[slide_id] = np.asarray(slide_trigs.get_column('mchirp'))
 
 logging.info("Basic columns extracted.")
 trig_time   = {}
@@ -336,8 +336,8 @@ for slide_id in range(num_slides):
         mass_cut = (bin[0] <= trig_all_mchirp[slide_id]\
                     ) & (trig_all_mchirp[slide_id] < bin[1])
         # Apply cut
-        trig_time[slide_id][bin[0]]    = trig_all_time[slide_id][mass_cut]
-        trig_snr[slide_id][bin[0]]     = trig_all_snr[slide_id][mass_cut]
+        trig_time[slide_id][bin[0]]   = trig_all_time[slide_id][mass_cut]
+        trig_snr[slide_id][bin[0]]    = trig_all_snr[slide_id][mass_cut]
         trig_bestnr[slide_id][bin[0]] = trig_all_bestnr[slide_id][mass_cut]
 
         k = 0
