@@ -140,7 +140,7 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     # This is for found/missed injections plots
     parser.add_argument("-x", "--x-variable", default=None, help="Quantity " +
                         "to plot on the horizontal axis. Supported choice " +
-                        "are: ")
+                        "are: distance, mchirp, time (for sky error plots).")
 
     # This is originally for SNR and chi-square veto plots 
     parser.add_argument("-y", "--y-variable", default=None, help="Quantity " +
