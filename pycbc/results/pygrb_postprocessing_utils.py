@@ -78,40 +78,12 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     parser.add_argument("-I", "--inj-file", action="store", default=None,
                         help="The location of the injection file")
 
-    # pygrb_efficiency only options: start here
-    # Does this differ from trig-file? --> it doesn't contain the onsource.
-    # NB: for now removed the requirement to specify trig_file.
-    # instead added a requirement at the end of the parser function
-    # to specify either offsource-file or trig-file.
-    parser.add_argument("-F", "--offsource-file", action="store",
-                        default=None, help="The location of the trigger file")
-
-    # How does this differ from offsource-file and trig-file? --> only contains onsource.
-    parser.add_argument("--onsource-file", action="store",
-                        default=None, help="The location of the trigger file")
-
-    parser.add_argument("-f", "--found-file", action="store",
-                        default=None,
-                        help="The location of the found injections file")
-
-    # pygrb_efficiency only options end here
-    parser.add_argument("-m", "--missed-file",action="store",
-                        default=None,
-                        help="The location of the missed injections file")
-
     parser.add_argument("-a", "--segment-dir", action="store",
                         required=True, help="directory holding buffer, on " +
                         "and off source segment files.")
 
     parser.add_argument("-o", "--output-file", default=None, #required=True,
                         help="Output file.")
-
-    # pygrb_efficiency only options: start here
-    # FIXME: eventually remove below argument and require output-file
-    # be specified. 
-    parser.add_argument("--output-path", default=os.getcwd(), 
-                        help="Output path for plots")
-    # pygrb_efficiency only options: end here
 
     parser.add_argument("-O", "--zoomed-output-file", default=None,
                         required=False, help="Output file for a zoomed in " +
@@ -165,14 +137,51 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         action="store_true", help="Plots are vs single IFO " +
                         "SNR, rather than coherent SNR")
 
-    parser.add_argument("--y-variable", default=None, help="Quantity to plot " +
-                        "the vertical axis. Supported choices are: " +
-                        "coherent, single, reweighted, or null (for " +
-                        "timeeries plots), standard, bank, or auto (for " +
+    # This is for found/missed injections plots
+    parser.add_argument("-x", "--x-variable", default=None, help="Quantity " +
+                        "to plot on the horizontal axis. Supported choice " +
+                        "are: ")
+
+    # This is originally for SNR and chi-square veto plots 
+    parser.add_argument("-y", "--y-variable", default=None, help="Quantity " +
+                        "to plot on the vertical axis. Supported choices " +
+                        "are: coherent, single, reweighted, or null (for " +
+                        "timeseries plots), standard, bank, or auto (for " +
                         "chi-square veto plots), coincident, nullstat, " +
                         "or overwhitened (for null statistics plots)")
 
-    # pygrb_efficiency options: start here
+    parser.add_argument('--plot-title',
+                        help="If given, use this as the plot caption")
+
+    parser.add_argument('--plot-caption',
+                        help="If given, use this as the plot caption")
+    
+
+    # pygrb_efficiency only options: start here
+    # Does this differ from trig-file? --> it doesn't contain the onsource.
+    # NB: for now removed the requirement to specify trig_file.
+    # instead added a requirement at the end of the parser function
+    # to specify either offsource-file or trig-file.
+    parser.add_argument("-F", "--offsource-file", action="store",
+                        default=None, help="The location of the trigger file")
+
+    # As opposed to offsource-file and trig-file, this only contains onsource
+    parser.add_argument("--onsource-file", action="store",
+                        default=None, help="The location of the trigger file")
+
+    parser.add_argument("-f", "--found-file", action="store",
+                        default=None,
+                        help="The location of the found injections file")
+
+    parser.add_argument("-m", "--missed-file",action="store",
+                        default=None,
+                        help="The location of the missed injections file")
+
+    # FIXME: eventually remove below argument and require output-file
+    # be specified. 
+    parser.add_argument("--output-path", default=os.getcwd(), 
+                        help="Output path for plots")
+
     parser.add_argument("-s", "--segment-length", action="store", type=float,
                         default=None, help="The length of analysis segments.")
 
@@ -252,15 +261,8 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     parser.add_argument("--mass-bins", type=str, default="0-3.48,3.48-6,6-20",\
                     help="comma separated list of dash-separated pairs "\
                             "of m_low-m_high mass bins.")
-
     # pygrb_efficiency only options end here
 
-    parser.add_argument('--plot-title',
-                        help="If given, use this as the plot caption")
-
-    parser.add_argument('--plot-caption',
-                        help="If given, use this as the plot caption")
-    
     args = parser.parse_args()
     if not (args.trig_file or args.offsource_file):
         parser.error('Must specify either trig-file or offsource-file.')
