@@ -257,10 +257,6 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         type=float, default=1.0, help="The scaling factor " +
                         "to use when calculating the V1 calibration " +
                         "amplitude error.")
-    # TODO: Deprecated option: remove all over and then here
-    parser.add_argument("--mass-bins", type=str, default="0-3.48,3.48-6,6-20",\
-                    help="comma separated list of dash-separated pairs "\
-                            "of m_low-m_high mass bins.")
     # pygrb_efficiency only options end here
 
     args = parser.parse_args()
