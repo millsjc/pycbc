@@ -222,38 +222,38 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         type=float, default=0, help="The standard " +
                         "deviation to use when calculating the waveform error.")
 
-    parser.add_argument("-y", "--h1-cal-error", action="store", type=float,
+    parser.add_argument("--h1-cal-error", action="store", type=float,
                         default=0, help="The standard deviation to use when " +
                         "calculating the H1 calibration amplitude error.")
 
-    parser.add_argument("-Y", "--k1-cal-error", action="store", type=float,
+    parser.add_argument("--k1-cal-error", action="store", type=float,
                         default=0, help="The standard deviation to use when " +
                         "calculating the K1 calibration amplitude error.")
 
-    parser.add_argument("-z", "--l1-cal-error", action="store", type=float,
+    parser.add_argument("--l1-cal-error", action="store", type=float,
                         default=0, help="The standard deviation to use when " +
                         "calculating the L1 calibration amplitude error.")
 
-    parser.add_argument("-Z", "--v1-cal-error", action="store", type=float,
+    parser.add_argument("--v1-cal-error", action="store", type=float,
                         default=0, help="The standard deviation to use when " +
                         "calculating the V1 calibration amplitude error.")
 
-    parser.add_argument("-p", "--h1-dc-cal-error", action="store",
+    parser.add_argument("--h1-dc-cal-error", action="store",
                         type=float, default=1.0, help="The scaling factor " +
                         "to use when calculating the H1 calibration " +
                         "amplitude error.")
 
-    parser.add_argument("-P", "--k1-dc-cal-error", action="store",
+    parser.add_argument("--k1-dc-cal-error", action="store",
                         type=float, default=1.0, help="The scaling factor " +
                         "to use when calculating the K1 calibration " +
                         "amplitude error.")
 
-    parser.add_argument("-r", "--l1-dc-cal-error", action="store",
+    parser.add_argument("--l1-dc-cal-error", action="store",
                         type=float, default=1.0, help="The scaling factor " +
                         "to use when calculating the L1 calibration " +
                         "amplitude error.")
 
-    parser.add_argument("-R", "--v1-dc-cal-error", action="store",
+    parser.add_argument("--v1-dc-cal-error", action="store",
                         type=float, default=1.0, help="The scaling factor " +
                         "to use when calculating the V1 calibration " +
                         "amplitude error.")
