@@ -23,12 +23,11 @@
 from __future__ import division
 
 import sys
-import glob
 import os
 import copy
 import logging
 import pycbc.version
-from pycbc.results.pygrb_postprocessing_utils import extract_vetoes, extract_ifos, load_xml_file, load_xml_table, load_segment_dict, load_time_slides, load_triggers, pygrb_plot_opts_parser
+from pycbc.results.pygrb_postprocessing_utils import extract_ifos_and_vetoes, load_xml_file, load_xml_table, load_segment_dict, load_time_slides, load_triggers, pygrb_plot_opts_parser
 # TODO: check if the following are needed 
 import matplotlib,re,optparse
 import numpy as np
@@ -118,15 +117,7 @@ num_bins          = opts.num_bins
 wav_err           = opts.waveform_error
 cluster_window    = opts.cluster_window
 glitch_check_fac  = opts.glitch_check_factor
-# TODO: appears in other executables. Make it a function
-veto_files = []
-if opts.veto_directory:
-    veto_string = ','.join([str(i) for i in range(2,opts.veto_category+1)])
-    veto_files = glob.glob(opts.veto_directory +'/*CAT[%s]*.xml' %(veto_string))
-# TODO: superseded
-mass_bins = map(lambda p: map(float, p.split('-')), opts.mass_bins.split(','))
 num_mc_injs = opts.num_mc_injections
-    
 # Initialize random number generator
 np.random.seed(opts.seed)
 logging.info("Setting random seed to %d." % opts.seed)
@@ -136,17 +127,10 @@ logging.info("Setting output directory.")
 if not os.path.isdir(outdir):
     os.makedirs(outdir)
 
-# Extract IFOs
-# FIXME: This is nasty, we actually read the file twice, can we fix this?
-# In general we may be opening re-reading things (segments too?).
-logging.info("Extracting IFOs.") 
-ifos = extract_ifos(trig_file)
-# This is in PygrbFilterOutput
-ifo_att = {'G1':'g', 'H1':'h1', 'H2':'h2', 'L1':'l', 'V1':'v', 'T1':'t'}
-
-# Extract vetoes
-logging.info("Extracting vetoes.")
-vetoes = extract_vetoes(veto_files, ifos)
+# Extract IFOs and vetoes
+logging.info("Extracting IFOs and vetoes.") 
+ifos, vetoes = extract_ifos_and_vetoes(trig_file, opts.veto_directory, \
+                                       opts.veto_category)
 
 # Load triggers, time-slides, and segment dictionary
 logging.info("Loading triggers.")
@@ -290,92 +274,48 @@ time_bin_veto_max_snr = {}
 time_bin_veto_max_bestnr = {}
 time_bin_veto_max_snr_uncut = {}
 
-# Define mass bins
-# TODO: superseded
-mass_bin = lambda mc: [i for i,b in enumerate(mass_bins) if b[0]<=mc<b[1]][0]
-
 for slide_id in range(num_slides):
     num_slide_segs = len(trial_dict[slide_id]) 
-    # Define arrays for mass bins
     trig_time[slide_id]   = {}
     trig_snr[slide_id]    = {}
     trig_bestnr[slide_id] = {}
-    time_bin_veto_max_snr[slide_id] = np.zeros([len(mass_bins)+1, num_slide_segs])
-    time_bin_veto_max_bestnr[slide_id] = np.zeros([len(mass_bins)+1, num_slide_segs])
-    time_bin_veto_max_snr_uncut[slide_id] = np.zeros([len(mass_bins)+1, num_slide_segs])
-
-# Check for triggers outside of mass bins if verbose
-# TODO: superseded
-#if verbose:
-#    num_cut = 0
-#    for slide_id in range(num_slides):
-#        in_mass_bins = np.zeros(len(sorted_trigs[slide_id])).astype(np.bool) 
-#        for i,bin in enumerate(mass_bins):
-#            mass_cut = (bin[0] <= trig_all_mchirp[slide_id])\
-#                            & (trig_all_mchirp[slide_id] < bin[1])
-#            in_mass_bins = in_mass_bins | mass_cut
-#        in_mass_bins = ~in_mass_bins
-#        if in_mass_bins.any():
-#            num_cut += len(in_mass_bins[in_mass_bins])
-#    if num_cut:
-#        msg = "Triggers outside of the given mass bins are present.\n"
-#        msg += "These %d triggers will be vetoed.\n" %(num_cut)
-#        logging.info(msg)
+    time_bin_veto_max_snr[slide_id] = np.zeros(num_slide_segs)
+    time_bin_veto_max_bestnr[slide_id] = np.zeros(num_slide_segs)
+    time_bin_veto_max_snr_uncut[slide_id] = np.zeros(num_slide_segs)
 
 for slide_id in range(num_slides):
-    # Separate triggers by mass bin and record maxima for each trial
-    for i,bin in enumerate(mass_bins):
-        # Construct mass_cut
-        mass_cut = (bin[0] <= trig_all_mchirp[slide_id]\
-                    ) & (trig_all_mchirp[slide_id] < bin[1])
-        # Apply cut
-        trig_time[slide_id][bin[0]]   = trig_all_time[slide_id][mass_cut]
-        trig_snr[slide_id][bin[0]]    = trig_all_snr[slide_id][mass_cut]
-        trig_bestnr[slide_id][bin[0]] = trig_all_bestnr[slide_id][mass_cut]
+    # Record maxima for each trial
+    # Apply cut
+    trig_time[slide_id]   = trig_all_time[slide_id]
+    trig_snr[slide_id]    = trig_all_snr[slide_id]
+    trig_bestnr[slide_id] = trig_all_bestnr[slide_id]
 
-        k = 0
-        for j,trial in enumerate(trial_dict[slide_id]):
-            trial_cut = (trial[0] <= trig_time[slide_id][bin[0]])\
-                              & (trig_time[slide_id][bin[0]] < trial[1])
-            if not trial_cut.any():  continue
-            # Max SNR in this mass bin and all mass bins
-            time_bin_veto_max_snr[slide_id][i,j] = \
-                            max(trig_snr[slide_id][bin[0]][trial_cut])
-            time_bin_veto_max_snr[slide_id][-1,j] = \
-                            max(time_bin_veto_max_snr[slide_id][-1,j],\
-                                    time_bin_veto_max_snr[slide_id][i,j])
-            # Max BestNR in this mass bin and all mass bins
-            time_bin_veto_max_bestnr[slide_id][i,j]  = \
-                            max(trig_bestnr[slide_id][bin[0]][trial_cut])
-            time_bin_veto_max_bestnr[slide_id][-1,j] = \
-                            max(time_bin_veto_max_bestnr[slide_id][-1,j],\
-                                    time_bin_veto_max_bestnr[slide_id][i,j])
+    for j,trial in enumerate(trial_dict[slide_id]):
+        trial_cut = (trial[0] <= trig_time[slide_id])\
+                          & (trig_time[slide_id] < trial[1])
+        if not trial_cut.any():  continue
+        # Max SNR
+        time_bin_veto_max_snr[slide_id][j] = \
+                        max(trig_snr[slide_id][trial_cut])
+        # Max BestNR
+        time_bin_veto_max_bestnr[slide_id][j]  = \
+                        max(trig_bestnr[slide_id][trial_cut])
+        # Max SNR for triggers passing SBVs
+        sbv_cut = trig_bestnr[slide_id]!=0
+        if not (trial_cut&sbv_cut).any():  continue
+        time_bin_veto_max_snr_uncut[slide_id][j] =\
+                          max(trig_snr[slide_id][trial_cut & sbv_cut])
 
-            # Max SNR for triggers passing SBVs in this mass bin and all mass bins
-            sbv_cut = trig_bestnr[slide_id][bin[0]]!=0
-            if not (trial_cut&sbv_cut).any():  continue
-            time_bin_veto_max_snr_uncut[slide_id][i,j] =\
-                              max(trig_snr[slide_id][bin[0]][trial_cut & sbv_cut])
-            time_bin_veto_max_snr_uncut[slide_id][-1,j] =\
-                              max(time_bin_veto_max_snr_uncut[slide_id][-1,j],\
-                                      time_bin_veto_max_snr_uncut[slide_id][i,j])
+logging.info("SNR and bestNR maxima calculated.")
 
-msg = "%d mass bins seeded and SNR/bestNR maxima calculated." % (len(mass_bins))
-logging.info(msg)
-
-# Calculate and print how many bins have "No event"
-quietest_fap = []
-for bin_num in range(len(mass_bins)):
-    num_events = 0
-    for slide_id in range(num_slides):
-        for trial in range(len(trial_dict[slide_id])):
-            if time_bin_veto_max_bestnr[slide_id][bin_num,trial] > 0:
-                num_events += 1
-    quietest_fap.append(num_events/total_trials)
-
-quietest_file=open('%s/quiet_fap_vals.txt' % outdir,'w')
-for val in quietest_fap:
-    print >> quietest_file, val
+# Calculate and print fraction of trials with an event (highest FAP value)
+num_events = 0
+for slide_id in range(num_slides):
+    for trial in range(len(trial_dict[slide_id])):
+        if time_bin_veto_max_bestnr[slide_id][trial] > 0:
+            num_events += 1
+quietest_file=open('%s/quiet_fap_val.txt' % outdir,'w')
+quietest_file.write('%s' % (num_events/total_trials))
 quietest_file.close()
 
 # Output details of (at most) 30 loudest offsouce triggers
@@ -388,7 +328,7 @@ offsource_trigs.reverse()
 
 #TODO: we also want the templates spin1z and spin2z. Do this after switch to hdf5
 # th: table header
-th = [ 'Mass Bin', 'Trial', 'Slide Num', 'FAP', 'GPS',\
+th = [ 'Trial', 'Slide Num', 'FAP', 'GPS',\
        'Rec. m1', 'Rec. m2', 'Rec. Mc',\
        'Rec. RA','Rec. Dec', 'SNR', 'Chi^2', 'Bank veto', 'Auto veto',\
        'Null SNR' ]
@@ -398,31 +338,14 @@ th.append('BestNR')
 # td: table data
 td = []
 
+# This is in PygrbFilterOutput
+ifo_att = {'G1':'g', 'H1':'h1', 'H2':'h2', 'L1':'l', 'V1':'v', 'T1':'t'}
 for i in range(min(len(offsource_trigs), 30)):
-    # TODO: leave this as bestnr or rename it?
     bestnr = offsource_trigs[i][0]
     trig = offsource_trigs[i][1]
     trig_slide_id = int(trig.time_slide_id)
 
-    # Get mass bin of trigger
-    # TODO: superseded
-    trig_bin = None
-    bin_num = 0
-    for bin in mass_bins:
-        if bin[0] <= trig.mchirp < bin[1]:
-            if not trig_bin:
-                trig_bin = bin
-                trig_bin_num = bin_num
-            else:
-                err_msg = "Mass bins appear to overlap."
-                logging.error(err_msg)
-        bin_num += 1
-    if not trig_bin:
-        continue
-
     # Get trial of trigger, triggers with 'No trial' should have been removed!
-    # TODO: never used again?
-    end_time = trig.get_end()
     for j,trial in enumerate(trial_dict[trig_slide_id]):
         if trig.get_end() in trial:
             chunk_num = j
@@ -433,7 +356,7 @@ for i in range(min(len(offsource_trigs), 30)):
     # Get FAP of trigger
     num_trials_louder = 0
     for slide_id in range(num_slides):
-        for val in time_bin_veto_max_bestnr[slide_id][trig_bin_num]:
+        for val in time_bin_veto_max_bestnr[slide_id]:
             if val > bestnr:
                 num_trials_louder += 1
     fap = num_trials_louder/total_trials
@@ -443,7 +366,7 @@ for i in range(min(len(offsource_trigs), 30)):
     null_snr = trig.get_null_snr()
 
     # TODO: trigger spin1z and spin2z wanted
-    d = [ '%s-%s' % tuple(trig_bin), chunk_num, trig_slide_id, pval,\
+    d = [ chunk_num, trig_slide_id, pval,\
           '%.4f' % trig.get_end(),\
           '%.2f' % trig.mass1, '%.2f' % trig.mass2, '%.2f' % trig.mchirp,\
           '%.2f' % (np.degrees(trig.ra)), '%.2f'% (np.degrees(trig.dec)),\
@@ -474,70 +397,40 @@ pycbc.results.save_fig_with_metadata(html, "%s/loudest_offsource_trigs.html" % o
 # and loudest SNR, so could just add this to the above's caption.
 # ==========================
 # TODO: very similar lines of code are repeated 3-4 times
-max_snr       = {}
-max_bestnr    = {}
-median_snr    = {}
-median_bestnr = {}
 
 th = ['','SNR','BestNR']
 td = []
 
-full_time_bin_veto_max_snr = {}
-full_time_bin_veto_max_snr_uncut = {}
-full_time_bin_veto_max_bestnr = {}
-for bin_num in range(len(mass_bins)+1):
-    full_time_bin_veto_max_snr[bin_num] = []
-    full_time_bin_veto_max_snr_uncut[bin_num] = []
-    full_time_bin_veto_max_bestnr[bin_num] = []
-    for slide_id in range(num_slides):
-        full_time_bin_veto_max_snr[bin_num].extend(time_bin_veto_max_snr[slide_id][bin_num])
-        full_time_bin_veto_max_snr_uncut[bin_num].extend(\
-                        time_bin_veto_max_snr_uncut[slide_id][bin_num])
-        full_time_bin_veto_max_bestnr[bin_num].extend(\
-                        time_bin_veto_max_bestnr[slide_id][bin_num])
-    full_time_bin_veto_max_snr[bin_num].sort()
-    full_time_bin_veto_max_snr_uncut[bin_num].sort()
-    full_time_bin_veto_max_bestnr[bin_num].sort()
+full_time_bin_veto_max_snr = []
+full_time_bin_veto_max_snr_uncut = []
+full_time_bin_veto_max_bestnr = []
+for slide_id in range(num_slides):
+    full_time_bin_veto_max_snr.extend(time_bin_veto_max_snr[slide_id])
+    full_time_bin_veto_max_snr_uncut.extend(\
+                    time_bin_veto_max_snr_uncut[slide_id])
+    full_time_bin_veto_max_bestnr.extend(time_bin_veto_max_bestnr[slide_id])
+full_time_bin_veto_max_snr.sort()
+full_time_bin_veto_max_snr_uncut.sort()
+full_time_bin_veto_max_bestnr.sort()
 
-bin_num = 0
-for bin in mass_bins:
-    max_snr[bin[0]]    = max([trig_snr[slide_id][bin[0]].max() if len(trig_snr[slide_id][bin[0]]) else 0 for slide_id in range(num_slides)])
-    max_bestnr[bin[0]] = max([trig_bestnr[slide_id][bin[0]].max() if len(trig_snr[slide_id][bin[0]]) else 0 for slide_id in range(num_slides)])
+max_snr = max([trig_snr[slide_id].max() if len(trig_snr[slide_id]) else 0 for slide_id in range(num_slides)])
+max_bestnr = max([trig_bestnr[slide_id].max() if len(trig_snr[slide_id]) else 0 for slide_id in range(num_slides)])
 
-    if (total_trials % 2):
-        median_snr[bin[0]] = (full_time_bin_veto_max_snr[bin_num])\
-                        [(total_trials - 1) // 2]
-        median_bestnr[bin[0]] = (full_time_bin_veto_max_bestnr[bin_num])\
-                        [(total_trials - 1) // 2]
-    else:
-        median_snr[bin[0]] = np.mean( (full_time_bin_veto_max_snr[bin_num])\
-                                                        [total_trials//2 - 1 : total_trials//2 + 1])
-        median_bestnr[bin[0]] = np.mean( (full_time_bin_veto_max_bestnr[bin_num])\
-                                                        [total_trials//2 - 1 : total_trials//2 + 1])
+if (total_trials % 2):
+    median_snr = full_time_bin_veto_max_snr[(total_trials - 1) // 2]
+    median_bestnr = full_time_bin_veto_max_bestnr[(total_trials - 1) // 2]
+else:
+    median_snr = np.mean( (full_time_bin_veto_max_snr)\
+                                                    [total_trials//2 - 1 : total_trials//2 + 1])
+    median_bestnr = np.mean( (full_time_bin_veto_max_bestnr)\
+                                                    [total_trials//2 - 1 : total_trials//2 + 1])
 
-    bin_num += 1
 
-    d = [ 'Loudest in Mchirp bin %s - %s' % tuple(bin), max_snr[bin[0]],\
-                max_bestnr[bin[0]] ]
-    td.append(d)
-    d = [ 'Median in Mchirp bin %s - %s' % tuple(bin), median_snr[bin[0]],\
-                  median_bestnr[bin[0]] ]
-    td.append(d)
-    td.append([]) 
-
-# Work out all mass bins
-max_snr['all'] = np.array(max_snr.values()).max()
-max_bestnr['all'] = np.array(max_bestnr.values()).max()
-median_snr['all'] = (full_time_bin_veto_max_snr[bin_num])\
-                [total_trials //2]
-median_bestnr['all'] = (full_time_bin_veto_max_bestnr[bin_num])\
-                [total_trials//2]
-
-# Print to html table
-d = [ "Loudest in all bins", max_snr['all'], max_bestnr['all'] ]
+d = [ 'Loudest ', max_snr, max_bestnr ]
 td.append(d)
-d = [ "Median in all bins", median_snr['all'], median_bestnr['all'] ]
+d = [ 'Median ', median_snr, median_bestnr ]
 td.append(d)
+td.append([]) 
 
 # Write html table with results
 html = pycbc.results.dq.redirect_javascript + str(pycbc.results.static_table(td, th))
@@ -562,40 +455,34 @@ if onsource_file:
     on_mchirp = on_trigs.get_column('mchirp')
 
     # Set loudest event arrays
-    loud_on_bestnr_trigs = dict((bin[0], None) for bin in mass_bins)
-    loud_on_snr_trigs    = dict((bin[0], None) for bin in mass_bins)
-    loud_on_bestnr      = dict((bin[0], 0) for bin in mass_bins)
-    loud_on_fap         = dict((bin[0], 1) for bin in mass_bins)
-    loud_on_snr         = dict((bin[0], 0) for bin in mass_bins)
+    # TODO: are these necessary?
+    loud_on_bestnr_trigs = None
+    loud_on_snr_trigs    = None
+    loud_on_bestnr       = 0
+    loud_on_fap          = 1
+    loud_on_snr          = 0
 
-    # Loop over mass bins recording loudest trig by SNR and BestNR
-    for i,bin in enumerate(mass_bins):
-        mass_cut = (bin[0] <= on_mchirp) & (on_mchirp < bin[1])
-        if not mass_cut.any():
-            loud_on_bestnr_trigs[bin[0]] = None
-            loud_on_bestnr[bin[0]] = 0
-        else:
-            bin_trigs = sorted(np.asarray(on_trigs)[mass_cut],\
-                              key=lambda t: t.snr, reverse=True)
-            loud_on_snr_trigs[bin[0]] = bin_trigs[0]
-            loud_on_snr[bin[0]]       = bin_trigs[0].snr
-            bin_trigs.sort(key=lambda t: get_bestnr(t, q=chisq_index, n=chisq_nhigh,\
-                                                      null_thresh=null_thresh,snr_threshold=snr_thresh,\
-                                                      sngl_snr_threshold = sngl_snr_thresh,\
-                                                      chisq_threshold = new_snr_thresh,\
-                                                      null_grad_thresh = null_grad_thresh,\
-                                                      null_grad_val = null_grad_val),   reverse=True)
-            loud_on_bestnr_trigs[bin[0]] = bin_trigs[0]
-            loud_on_bestnr[bin[0]] = get_bestnr(bin_trigs[0], q=chisq_index,\
-                                                null_thresh=null_thresh,snr_threshold=snr_thresh,\
-                                                sngl_snr_threshold = sngl_snr_thresh,\
-                                                chisq_threshold = new_snr_thresh,n=chisq_nhigh,\
-                                                null_grad_thresh = null_grad_thresh,\
-                                                null_grad_val = null_grad_val)
-            # If the loudest event has bestnr = 0, there is no event at all!
-            if loud_on_bestnr[bin[0]] == 0:
-                loud_on_bestnr_trigs[bin[0]] = None
-                loud_on_bestnr[bin[0]] = 0 
+    # Record loudest trig by SNR and by BestNR
+    bin_trigs = sorted(np.asarray(on_trigs), key=lambda t: t.snr, reverse=True)
+    loud_on_snr_trigs = bin_trigs[0]
+    loud_on_snr       = bin_trigs[0].snr
+    bin_trigs.sort(key=lambda t: get_bestnr(t, q=chisq_index, n=chisq_nhigh,\
+                                            null_thresh=null_thresh,snr_threshold=snr_thresh,\
+                                            sngl_snr_threshold = sngl_snr_thresh,\
+                                            chisq_threshold = new_snr_thresh,\
+                                            null_grad_thresh = null_grad_thresh,\
+                                            null_grad_val = null_grad_val),   reverse=True)
+    loud_on_bestnr_trigs = bin_trigs[0]
+    loud_on_bestnr = get_bestnr(bin_trigs[0], q=chisq_index,\
+                                null_thresh=null_thresh,snr_threshold=snr_thresh,\
+                                sngl_snr_threshold = sngl_snr_thresh,\
+                                chisq_threshold = new_snr_thresh,n=chisq_nhigh,\
+                                null_grad_thresh = null_grad_thresh,\
+                                null_grad_val = null_grad_val)
+    # If the loudest event has bestnr = 0, there is no event at all!
+    if loud_on_bestnr == 0:
+        loud_on_bestnr_trigs = None
+        loud_on_bestnr = 0 
 
     logging.info("Onsource analysed.")
 
@@ -603,38 +490,36 @@ if onsource_file:
     file2 = open('%s/loud_numbers.txt' % outdir, 'w')
     # Table header and table data
     # TODO we will want the spins too (easier to deal with after move to hdf5)
-    th = ['Bin', 'FAP', 'GPS', 'Rec. m1', 'Rec. m2', 'Rec. Mc', 'Rec. RA',\
+    th = ['FAP', 'GPS', 'Rec. m1', 'Rec. m2', 'Rec. Mc', 'Rec. RA',\
           'Rec. Dec', 'SNR', 'Chi^2', 'Bank veto', 'Auto veto', 'Null SNR'] +\
          ['%s SNR' % ifo for ifo in ifos ] + ['BestNR']
     td = [] 
 
-    for i,bin in enumerate(mass_bins):
-        if loud_on_bestnr_trigs[bin[0]]:
-            trig = loud_on_bestnr_trigs[bin[0]]
-            num_trials_louder = 0
-            tot_off_snr = np.array([])
-            for slide_id in range(num_slides):
-                num_trials_louder += sum(time_bin_veto_max_bestnr[slide_id][i] > \
-                                         loud_on_bestnr[bin[0]])
-                tot_off_snr = np.concatenate([tot_off_snr,time_bin_veto_max_bestnr[slide_id][i]])
-            fap = num_trials_louder/total_trials
-            fap_test = sum(tot_off_snr>loud_on_bestnr[bin[0]])/total_trials
-            pval = '< %.3g' % (1./total_trials) if fap==0 else '%.3g' % fap
-            loud_on_fap[bin[0]] = fap
-            # TODO: spins of template
-            d = ['%s-%s' % tuple(bin), pval, trig.get_end(),\
-                 trig.mass1, trig.mass2, trig.mchirp,\
-                 np.degrees(trig.ra), np.degrees(trig.dec),\
-                 trig.snr, trig.chisq, trig.bank_chisq,\
-                 trig.cont_chisq, null_snr] + \
-                 [trig.get_sngl_snr(ifo) for ifo in ifos] + [loud_on_bestnr[bin[0]]]
-            file2.write('%s\n' % pval.replace('<', '&lt'))
-            td.append(d)
+    if loud_on_bestnr_trigs:
+        trig = loud_on_bestnr_trigs
+        num_trials_louder = 0
+        tot_off_snr = np.array([])
+        for slide_id in range(num_slides):
+            num_trials_louder += sum(time_bin_veto_max_bestnr[slide_id] > \
+                                     loud_on_bestnr)
+            tot_off_snr = np.concatenate([tot_off_snr,time_bin_veto_max_bestnr[slide_id]])
+        fap = num_trials_louder/total_trials
+        fap_test = sum(tot_off_snr>loud_on_bestnr)/total_trials
+        pval = '< %.3g' % (1./total_trials) if fap==0 else '%.3g' % fap
+        loud_on_fap = fap
+        # TODO: spins of template
+        d = [pval, trig.get_end(),\
+             trig.mass1, trig.mass2, trig.mchirp,\
+             np.degrees(trig.ra), np.degrees(trig.dec),\
+             trig.snr, trig.chisq, trig.bank_chisq,\
+             trig.cont_chisq, null_snr] + \
+             [trig.get_sngl_snr(ifo) for ifo in ifos] + [loud_on_bestnr]
+        file2.write('%s\n' % pval.replace('<', '&lt'))
+        td.append(d)
 
-        else:
-            td.append(["In mass bin %s to %s there are no events" % tuple(bin)])
-            file2.write('-2\n')
-        bin_num += 1
+    else:
+        td.append(["There are no events"])
+        file2.write('-2\n')
 
     file2.close()
     # Write to html file 
@@ -647,12 +532,11 @@ if onsource_file:
                                                title=title,
                                                caption=caption)
 else:
-    for i,bin in enumerate(mass_bins):
-        tot_off_snr = np.array([])
-        for slide_id in range(num_slides):
-            tot_off_snr = np.concatenate([tot_off_snr,time_bin_veto_max_bestnr[slide_id][i]])
-        med_snr = np.median(tot_off_snr)
-        fap = sum(tot_off_snr>med_snr)/total_trials
+    tot_off_snr = np.array([])
+    for slide_id in range(num_slides):
+        tot_off_snr = np.concatenate([tot_off_snr,time_bin_veto_max_bestnr[slide_id]])
+    med_snr = np.median(tot_off_snr)
+    fap = sum(tot_off_snr>med_snr)/total_trials
 
 # =======================
 # Post-process injections
@@ -729,10 +613,8 @@ if doinj:
     # Construct conditions for found louder than background, found not louder
     # than background, and missed
     zero_fap = np.zeros(len(found_injs)).astype(np.bool)
-    for i,bin in enumerate(mass_bins):
-        mass_cut    = (bin[0] <= found_trig_mchirp) & (found_trig_mchirp < bin[1])
-        zero_fap_cut = found_trig_bestnr > max_bestnr[bin[0]]
-        zero_fap    = zero_fap | (mass_cut & zero_fap_cut)
+    zero_fap_cut = found_trig_bestnr > max_bestnr
+    zero_fap    = zero_fap | (zero_fap_cut)
 
     # Non-zero FAP but bestnr > 0
     nonzero_fap = ~zero_fap & (found_trig_bestnr!=0)
@@ -783,11 +665,7 @@ if doinj:
     g_ifar_stat          = np.zeros([len(g_ifar_det_stat)])
     for ix, ( mc, bestnr ) in \
                 enumerate(zip(found_trig_mchirp[nonzero_fap], g_ifar_det_stat)):
-        try:
-            g_ifar_stat[ix] = (full_time_bin_veto_max_bestnr[mass_bin(mc)] > bestnr).sum()
-        except IndexError:
-            # Trigger is outside of mass bin
-            g_ifar_stat[ix] = total_trials
+        g_ifar_stat[ix] = (full_time_bin_veto_max_bestnr > bestnr).sum()
     g_ifar_stat = g_ifar_stat / total_trials
     # Statistics: missed-found
     MF = np.argsort(g_ifar_stat)
@@ -961,12 +839,12 @@ if doinj:
                              (upper_dist-lower_dist)/num_bins) +\
                              (upper_dist-lower_dist)/num_bins)
 
-    num_injections         = np.zeros([len(mass_bins), len(dist_bins)+1])
-    found_max_bestnr       = np.zeros([len(mass_bins), len(dist_bins)+1])
-    found_on_bestnr        = np.zeros([len(mass_bins), len(dist_bins)+1])
-    num_injections_no_mc   = np.zeros([len(mass_bins), len(dist_bins)+1])
-    found_max_bestnr_no_mc = np.zeros([len(mass_bins), len(dist_bins)+1])
-    found_on_bestnr_no_mc  = np.zeros([len(mass_bins), len(dist_bins)+1])
+    num_injections         = np.zeros([len(dist_bins)+1])
+    found_max_bestnr       = np.zeros([len(dist_bins)+1])
+    found_on_bestnr        = np.zeros([len(dist_bins)+1])
+    num_injections_no_mc   = np.zeros([len(dist_bins)+1])
+    found_max_bestnr_no_mc = np.zeros([len(dist_bins)+1])
+    found_on_bestnr_no_mc  = np.zeros([len(dist_bins)+1])
 
     # Construct FAP list for all found injections
     inj_fap = np.zeros(len(found_injs))
@@ -1016,115 +894,98 @@ if doinj:
     # Check injections against on source
     # TODO: Refactor this
     if onsource_file:
-        more_sig_than_onsource = np.ndarray((len(mass_bins), len(found_injs)))
-        for i,bin in enumerate(mass_bins):
-            more_sig_than_onsource[i,:] = (inj_fap <= loud_on_fap[bin[0]])
+        more_sig_than_onsource = np.ndarray(len(found_injs))
+        more_sig_than_onsource = (inj_fap <= loud_on_fap)
         more_sig_than_onsource = more_sig_than_onsource.all(0)
     else:
-        more_sig_than_onsource = np.ndarray((len(mass_bins), len(found_injs)))
-        for i,bin in enumerate(mass_bins):
-            more_sig_than_onsource[i,:] = (inj_fap <= 0.5)
+        more_sig_than_onsource = np.ndarray(len(found_injs))
+        more_sig_than_onsource = (inj_fap <= 0.5)
         more_sig_than_onsource = more_sig_than_onsource.all(0)
 
-    # Loop over mass bins
     distance_count = np.zeros(len(dist_bins))
-    for i,bin in enumerate(mass_bins):
-        # construct mass_cut
-        found_inj_mass_cut  = (bin[0] <= found_inj_mchirp)  &(found_inj_mchirp < bin[1])
-        found_trig_mass_cut = (bin[0] <= found_trig_mchirp) &(found_trig_mchirp < bin[1])
-        missed_inj_mass_cut = (bin[0] <= missed_inj_mchirp) &(missed_inj_mchirp < bin[1])
 
-        found_trig_max_bestnr = np.zeros([len(found_trig_mchirp)])
+    found_trig_max_bestnr = np.zeros([len(found_trig_mchirp)])
+    for ix, mc in enumerate(found_trig_mchirp):
+        found_trig_max_bestnr[ix] = max_bestnr
+
+    max_bestnr_cut = (found_trig_bestnr > found_trig_max_bestnr)
+
+    # Check louder than on source
+    if onsource_file:
+        # TODO: basically the same code as above
+        found_trig_loud_on_bestnr = np.zeros([len(found_trig_mchirp)])
         for ix, mc in enumerate(found_trig_mchirp):
-            try:
-                found_trig_max_bestnr[ix] = max_bestnr[mass_bins[mass_bin(mc)][0]]
-            except IndexError:
-                # Trigger is outside of mass bin
-                found_trig_max_bestnr[ix] = 0
+            found_trig_loud_on_bestnr[ix] = loud_on_bestnr
+    else:
+        found_trig_loud_on_bestnr = np.zeros([len(found_trig_mchirp)])
+        for ix, mc in enumerate(found_trig_mchirp):
+            found_trig_loud_on_bestnr[ix] = med_snr
+    on_bestnr_cut  = found_trig_bestnr > found_trig_loud_on_bestnr
 
-        max_bestnr_cut = (found_trig_bestnr > found_trig_max_bestnr)
+    # Check whether injection is found for the purposes of exclusion
+    # distance calculation.
+    # Found: if louder than all on source
+    # Missed: if not louder than loudest on source
+    found_excl = on_bestnr_cut & (more_sig_than_onsource) & \
+                (found_trig_bestnr != 0)
+    # If not missed, double check bestnr against nearby triggers
+    near_test = np.zeros((found_excl).sum()).astype(bool)
+    for j,(t,bestnr) in enumerate(zip(found_inj_time[found_excl],\
+                                      found_trig_bestnr[found_excl])):
+        near_bestnr  = trig_all_bestnr[zero_lag_slide_id]\
+                      [np.abs(trig_all_time[zero_lag_slide_id]-t) < cluster_window]
+        near_test[j] = ~((near_bestnr * glitch_check_fac > bestnr).any())
+    # Apply the local test
+    # FIXME: putmask does not seem to work...
+    #np.putmask(found_excl, found_excl==True, near_test)
+    c = 0
+    for z,b in enumerate(found_excl):
+        if found_excl[z]:
+            found_excl[z] = near_test[c]
+            c += 1
 
-        # Check louder than on source in this bin
-        if onsource_file:
-            # TODO: basically the same code as above
-            found_trig_loud_on_bestnr = np.zeros([len(found_trig_mchirp)])
-            for ix, mc in enumerate(found_trig_mchirp):
-                try:
-                    found_trig_loud_on_bestnr[ix] = loud_on_bestnr[mass_bins[mass_bin(mc)][0]]
-                except IndexError:
-                    # Trigger is outside of mass bin
-                    found_trig_loud_on_bestnr[ix] = 0
-        else:
-            found_trig_loud_on_bestnr = np.zeros([len(found_trig_mchirp)])
-            for ix, mc in enumerate(found_trig_mchirp):
-                found_trig_loud_on_bestnr[ix] = med_snr
-        on_bestnr_cut  = found_trig_bestnr > found_trig_loud_on_bestnr
+    # Loop over each random instance of the injection set
+    for k in range(num_mc_injs+1): 
+        # Loop over the distance bins
+        for j,dist_bin in enumerate(dist_bins):
+            # Construct distance cut
+            found_dist_cut  = (dist_bin[0] <= found_inj_dist_mc[k,:]) &\
+                              (found_inj_dist_mc[k,:] < dist_bin[1])
+            missed_dist_cut = (dist_bin[0] <= missed_inj_dist_mc[k,:]) &\
+                              (missed_inj_dist_mc[k,:] < dist_bin[1])
+            long_dist_cut   = (dist_bin[0] <= long_inj_dist_mc[k,:]) &\
+                              (long_inj_dist_mc[k,:] < dist_bin[1])
 
-        # Check whether injection is found for the purposes of exclusion
-        # distance calculation.
-        # Found: if louder than all on source
-        # Missed: if not louder than loudest on source
-        found_excl = on_bestnr_cut & (more_sig_than_onsource) & \
-                    (found_trig_bestnr != 0)
-        # If not missed, double check bestnr against nearby triggers
-        near_test = np.zeros((found_excl).sum()).astype(bool)
-        for j,(t,bestnr) in enumerate(zip(found_inj_time[found_excl],\
-                                          found_trig_bestnr[found_excl])):
-            near_bestnr  = trig_all_bestnr[zero_lag_slide_id]\
-                          [np.abs(trig_all_time[zero_lag_slide_id]-t) < cluster_window]
-            near_test[j] = ~((near_bestnr * glitch_check_fac > bestnr).any())
-        # Apply the local test
-        # FIXME: putmask does not seem to work...
-        #np.putmask(found_excl, found_excl==True, near_test)
-        c = 0
-        for z,b in enumerate(found_excl):
-            if found_excl[z]:
-                found_excl[z] = near_test[c]
-                c += 1
+            # Count all injections in this distance bin
+            num_found_pass  = (found_dist_cut).sum()
+            num_missed_pass = (missed_dist_cut).sum()
+            num_long_pass   = long_dist_cut.sum() or 0
+            # Count only zero FAR injections
+            num_zero_far = (found_dist_cut & max_bestnr_cut).sum()
+            # Count number found for exclusion
+            num_excl = (found_dist_cut & (found_excl)).sum()
 
-        # Loop over each random instance of the injection set
-        for k in range(num_mc_injs+1): 
-            # Loop over the distance bins
-            for j,dist_bin in enumerate(dist_bins):
-                # Construct distance cut
-                found_dist_cut  = (dist_bin[0] <= found_inj_dist_mc[k,:]) &\
-                                  (found_inj_dist_mc[k,:] < dist_bin[1])
-                missed_dist_cut = (dist_bin[0] <= missed_inj_dist_mc[k,:]) &\
-                                  (missed_inj_dist_mc[k,:] < dist_bin[1])
-                long_dist_cut   = (dist_bin[0] <= long_inj_dist_mc[k,:]) &\
-                                  (long_inj_dist_mc[k,:] < dist_bin[1])
-
-                # Count all injections in this (mass, distance) bin
-                num_found_pass  = (found_inj_mass_cut  & found_dist_cut).sum()
-                num_missed_pass = (missed_inj_mass_cut & missed_dist_cut).sum()
-                # Apply long injections only to first mass bin
-                num_long_pass   = i==0 and long_dist_cut.sum() or 0
-                # Count only zero FAR injections
-                num_zero_far = (found_inj_mass_cut & found_dist_cut & max_bestnr_cut).sum()
-                # Count number found for exclusion
-                num_excl = (found_inj_mass_cut & found_dist_cut & (found_excl)).sum()
-
-                # Record number of injections, number found for exclusion
-                # and number of zero FAR
-                # TODO: serial coding
-                if k == 0:
-                    num_injections_no_mc[i,j]    += num_found_pass + num_missed_pass +\
-                                                    num_long_pass
-                    num_injections_no_mc[i,-1]   += num_found_pass + num_missed_pass +\
-                                                    num_long_pass
-                    found_max_bestnr_no_mc[i,j]  += num_zero_far
-                    found_max_bestnr_no_mc[i,-1] += num_zero_far
-                    found_on_bestnr_no_mc[i,j]   += num_excl
-                    found_on_bestnr_no_mc[i,-1]  += num_excl
-                else:
-                    num_injections[i,j]          += num_found_pass + num_missed_pass +\
-                                                    num_long_pass
-                    num_injections[i,-1]         += num_found_pass + num_missed_pass +\
-                                                    num_long_pass
-                    found_max_bestnr[i,j]        += num_zero_far
-                    found_max_bestnr[i,-1]       += num_zero_far
-                    found_on_bestnr[i,j]         += num_excl
-                    found_on_bestnr[i,-1]        += num_excl
+            # Record number of injections, number found for exclusion
+            # and number of zero FAR
+            # TODO: serial coding (and redundant items?)
+            if k == 0:
+                num_injections_no_mc[j]    += num_found_pass + num_missed_pass +\
+                                              num_long_pass
+                num_injections_no_mc[-1]   += num_found_pass + num_missed_pass +\
+                                              num_long_pass
+                found_max_bestnr_no_mc[j]  += num_zero_far
+                found_max_bestnr_no_mc[-1] += num_zero_far
+                found_on_bestnr_no_mc[j]   += num_excl
+                found_on_bestnr_no_mc[-1]  += num_excl
+            else:
+                num_injections[j]          += num_found_pass + num_missed_pass +\
+                                              num_long_pass
+                num_injections[-1]         += num_found_pass + num_missed_pass +\
+                                              num_long_pass
+                found_max_bestnr[j]        += num_zero_far
+                found_max_bestnr[-1]       += num_zero_far
+                found_on_bestnr[j]         += num_excl
+                found_on_bestnr[-1]        += num_excl
  
     np.savetxt('%s/found_maxbestnr.txt' % outdir, found_max_bestnr.T)
     np.savetxt('%s/found_maxbestnrnomc.txt' % outdir, found_max_bestnr_no_mc.T)
@@ -1234,41 +1095,40 @@ if doinj:
 fnd_col = cm.get_cmap()(0)
 
 # Plot cumulative histograms
-for i,bin in enumerate(mass_bins):
-    np.savetxt('%s/bestnr_vs_fap_%s_%s_numbers.txt' %(outdir, bin[0], bin[1]),
-               full_time_bin_veto_max_bestnr[i], delimiter='/t')
-    fig = plt.figure()
-    ax = fig.gca()
-    cumplot = plotutils.CumulativeHistogramPlot("BestNR",
-                                                 "False alarm probability",
-                                                 "")
-    cumplot.add_background([item] for item in full_time_bin_veto_max_bestnr[i])
-    cumplot.finalize(num_bins=50)
-    cumplot.ax.set_ylim(ymax=1.2)
-    cumplot.savefig('%s/bestnr_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1]))
-    plt.close()
+np.savetxt('%s/bestnr_vs_fap_numbers.txt' %(outdir),
+           full_time_bin_veto_max_bestnr, delimiter='/t')
+fig = plt.figure()
+ax = fig.gca()
+cumplot = plotutils.CumulativeHistogramPlot("BestNR",
+                                             "False alarm probability",
+                                             "")
+cumplot.add_background([item] for item in full_time_bin_veto_max_bestnr)
+cumplot.finalize(num_bins=50)
+cumplot.ax.set_ylim(ymax=1.2)
+cumplot.savefig('%s/bestnr_vs_fap.png' % (outdir))
+plt.close()
 
-    fig = plt.figure()
-    ax = fig.gca()
-    cumplot = plotutils.CumulativeHistogramPlot("SNR",
-                                                 "False alarm probability",
-                                                 "")
-    cumplot.add_background([item] for item in full_time_bin_veto_max_snr[i])
-    cumplot.finalize(num_bins=50)
-    cumplot.ax.set_ylim(ymax=1.2)
-    cumplot.savefig('%s/snr_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1]))
-    plt.close()
+fig = plt.figure()
+ax = fig.gca()
+cumplot = plotutils.CumulativeHistogramPlot("SNR",
+                                             "False alarm probability",
+                                             "")
+cumplot.add_background([item] for item in full_time_bin_veto_max_snr)
+cumplot.finalize(num_bins=50)
+cumplot.ax.set_ylim(ymax=1.2)
+cumplot.savefig('%s/snr_vs_fap.png' % (outdir))
+plt.close()
 
-    fig = plt.figure()
-    ax = fig.gca()
-    cumplot = plotutils.CumulativeHistogramPlot("SNR after signal based vetoes",
-                                                 "False alarm probability",
-                                                 "")
-    cumplot.add_background([item] for item in full_time_bin_veto_max_snr_uncut[i])
-    cumplot.finalize(num_bins=50)
-    cumplot.ax.set_ylim(ymax=1.2)
-    cumplot.savefig('%s/snruncut_vs_fap_%s_%s.png' % (outdir, bin[0], bin[1]))
-    plt.close()
+fig = plt.figure()
+ax = fig.gca()
+cumplot = plotutils.CumulativeHistogramPlot("SNR after signal based vetoes",
+                                             "False alarm probability",
+                                             "")
+cumplot.add_background([item] for item in full_time_bin_veto_max_snr_uncut)
+cumplot.finalize(num_bins=50)
+cumplot.ax.set_ylim(ymax=1.2)
+cumplot.savefig('%s/snruncut_vs_fap.png' % (outdir))
+plt.close()
 
 if doinj:
     dist_plot_vals = [np.asarray(bin).mean() for bin in dist_bins]
@@ -1281,15 +1141,12 @@ if doinj:
 
     file = open("%s/injection_recovery.html" % outdir, "w")
     
-    finjs         = found_max_bestnr.sum(0)[:-1] / num_mc_injs
-    totalinjs     = num_injections.sum(0)[:-1] / num_mc_injs
-    finjs_no_mc     = found_max_bestnr_no_mc.sum(0)[:-1]
-    totalinjs_no_mc = num_injections_no_mc.sum(0)[:-1]
-    file.write('\n'.join(["Total injections found in bin mchirp %s to %s "\
-                          "louder than all background in that bin using %s "\
-                          "is: %s<br>"\
-                          % (bin[0], bin[1], 'BestNR', found_max_bestnr[i,-1])\
-                          for i,bin in enumerate(mass_bins)])) 
+    finjs         = found_max_bestnr[:-1] / num_mc_injs
+    totalinjs     = num_injections[:-1] / num_mc_injs
+    finjs_no_mc     = found_max_bestnr_no_mc[:-1]
+    totalinjs_no_mc = num_injections_no_mc[:-1]
+    file.write("Total injections found louder than all background using %s "\
+               "is: %s<br>\n" % ('BestNR', found_max_bestnr[-1]))
 
     # Calculate error bars for efficiency/distance plot
     # TODO: serial coding
@@ -1362,14 +1219,12 @@ if doinj:
 
         sens_dist = d + (e - 0.5) * (d - d_low) / (e_low - e)
 
-    finjs     = found_on_bestnr.sum(0)[:-1] / num_mc_injs
-    finjs_no_mc = found_on_bestnr_no_mc.sum(0)[:-1]
+    finjs     = found_on_bestnr[:-1] / num_mc_injs
+    finjs_no_mc = found_on_bestnr_no_mc[:-1]
 
-    file.write('\n'.join(["Total injections found in bin mchirp %s to %s "\
-                          "louder than all background in that bin (and nearby "\
-                          "triggers in the offsource) using %s is: %s<br>"\
-                          % (bin[0], bin[1], 'BestNR', found_on_bestnr[i,-1])\
-                          for i,bin in enumerate(mass_bins)])) 
+    file.write("Total injections found louder than all background (and "\
+               "nearby triggers in the offsource) using %s is: %s<br>"\
+               % ('BestNR', found_on_bestnr[-1]))
     fig = plt.figure()
     ax = fig.gca()
     ax.grid()
@@ -1897,13 +1752,16 @@ if doinj:
     fig.savefig("%s/missed_found_injections_inc_dist.png" % outdir)
     plt.close()
 
+    # TODO: finish writing up pycbc_pygrb_plot_sky_error for these 3 plots
     # Plot sky recovery
     fig = plt.figure()
     ax = fig.gca()
     if len(g_found_time):
-        ax.plot(g_found_time, g_found_sky_angle, 'b.')
-    #if g_ifar_time:
-    #    ax.plot(g_ifar_time, g_ifar_sky_angle, 'b.')
+        ax.scatter(g_found_time, g_found_sky_angle, c=fnd_col, marker="+", s=30)
+    if len(g_ifar_time):
+        p = ax.scatter(g_ifar_time[FM], g_ifar_sky_angle[FM], c=g_ifar_stat[FM],
+                       vmin=0, vmax=1, s=40, edgecolor="w")
+        cb = plt.colorbar(p, label="FAP")
     ax.grid()
     ax.set_xlabel("Time since %d" % grb_time)
     ax.set_ylabel("Rec. sky error (radians)")
@@ -1914,9 +1772,11 @@ if doinj:
     fig = plt.figure()
     ax = fig.gca()
     if len(g_found_mchirp):
-        ax.plot(g_found_mchirp, g_found_sky_angle, 'b.')
-    #if g_ifar_mchirp:
-    #    ax.plot(g_ifar_mchirp, g_ifar_sky_angle, 'b.')
+        ax.scatter(g_found_mchirp, g_found_sky_angle, c=fnd_col, marker="+", s=30)
+    if len(g_ifar_mchirp):
+        p = ax.scatter(g_ifar_mchirp[FM], g_ifar_sky_angle[FM], c=g_ifar_stat[FM],
+                       vmin=0, vmax=1, s=40, edgecolor="w")
+        cb = plt.colorbar(p, label="FAP")
     ax.grid()
     ax.set_xlabel("Chirp Mass (solar masses)")
     ax.set_ylabel("Rec. sky error (radians)")
@@ -1926,9 +1786,11 @@ if doinj:
     fig = plt.figure()
     ax = fig.gca()
     if len(g_found_dist):
-        ax.plot(g_found_dist, g_found_sky_angle, 'b.')
-    #if g_ifar_dist:
-    #    ax.plot(g_ifar_dist, g_ifar_sky_angle, 'b.')
+        ax.scatter(g_found_dist, g_found_sky_angle, c=fnd_col, marker="+", s=30)
+    if len(g_ifar_dist):
+        p = ax.scatter(g_ifar_dist[FM], g_ifar_sky_angle[FM], c=g_ifar_stat[FM],
+                       vmin=0, vmax=1, s=40, edgecolor="w")
+        cb = plt.colorbar(p, label="FAP")
     ax.grid()
     ax.set_xlabel("Distance (Mpc)")
     ax.set_ylabel("Rec. sky error (radians)")
@@ -1936,5 +1798,6 @@ if doinj:
     ax.set_xlim([ 0.5,100 ])
     fig.savefig('%s/found_sky_error_distance.png' % outdir)
     plt.close()
+    #
 
 logging.info("Plots complete.")
