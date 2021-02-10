@@ -24,6 +24,7 @@ Module to generate PyGRB figures: scatter plots and timeseries.
 """
 
 import sys
+import glob
 import os
 import logging
 import argparse
@@ -59,6 +60,7 @@ from matplotlib import pyplot as plt
 # Parse command line
 # =============================================================================
 
+# TODO: regroup options that are now all in this unique parser
 def pygrb_plot_opts_parser(usage='', description=None, version=None):
     """Parses options for PyGRB post-processing scripts"""
     parser = argparse.ArgumentParser(usage=usage, description=description,
@@ -163,7 +165,7 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         action="store_true", help="Plots are vs single IFO " +
                         "SNR, rather than coherent SNR")
 
-    parser.add_argument("--variable", default=None, help="Quantity to plot " +
+    parser.add_argument("--y-variable", default=None, help="Quantity to plot " +
                         "the vertical axis. Supported choices are: " +
                         "coherent, single, reweighted, or null (for " +
                         "timeeries plots), standard, bank, or auto (for " +
@@ -203,6 +205,9 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     parser.add_argument("-M", "--num-mc-injections", action="store",
                         type=int, default=100, help="Number of Monte " +
                         "Carlo injection simulations to perform.")
+
+    parser.add_argument("-S", "--seed", action="store", type=int,
+                        default=1234, help="Seed to initialize Monte Carlo.")
 
     parser.add_argument("-w", "--waveform-error", action="store",
                         type=float, default=0, help="The standard " +
@@ -524,6 +529,26 @@ def extract_vetoes(veto_files, ifos):
         vetoes[ifo].coalesce()
 
     return vetoes
+
+
+# =============================================================================
+# Function to extract IFOs and vetoes
+# =============================================================================
+
+def extract_ifos_and_vetoes(trig_file, veto_dir, veto_cat):
+    """Extracts IFOs from search summary table and vetoes from a directory"""
+
+    # Extract IFOs 
+    ifos = extract_ifos(trig_file)
+
+    # Extract vetoes
+    veto_files = []
+    if veto_dir:
+        veto_string = ','.join([str(i) for i in range(2,veto_cat+1)])
+        veto_files = glob.glob(veto_dir +'/*CAT[%s]*.xml' %(veto_string))
+    vetoes = extract_vetoes(veto_files, ifos)
+
+    return ifos, vetoes
 
 
 # =============================================================================
