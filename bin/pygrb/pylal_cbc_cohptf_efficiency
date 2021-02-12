@@ -244,11 +244,10 @@ logging.info(msg)
 
 # Extract variables
 # TODO: do something along the lines of PygrbFilterOutput
+# TODO: do we really need these now the mass_bins are gone?
 trig_all_time = {}
 trig_all_snr = {}
 trig_all_bestnr = {}
-# TODO: get rid of this?
-trig_all_mchirp = {}
     
 for slide_id in range(num_slides):
     # Get basics
@@ -264,7 +263,6 @@ for slide_id in range(num_slides):
                                             null_grad_val=null_grad_val) \
                                  for t in slide_trigs]
     trig_all_bestnr[slide_id] = np.array(trig_all_bestnr[slide_id])
-    trig_all_mchirp[slide_id] = np.asarray(slide_trigs.get_column('mchirp'))
 
 logging.info("Basic columns extracted.")
 trig_time   = {}
@@ -442,6 +440,10 @@ pycbc.results.save_fig_with_metadata(html, "%s/loudest_median_offsource.html" % 
                                            title=title,
                                            caption=caption)
 
+# Store BestNR and FAP values
+np.savetxt('%s/bestnr_vs_fap_numbers.txt' %(outdir),
+           full_time_bin_veto_max_bestnr, delimiter='/t')
+
 # =======================
 # Load on source triggers
 # ======================= 
@@ -561,6 +563,29 @@ if doinj:
 
     logging.info("Missed/found injections/triggers loaded.")
 
+    # Grab values of detection statistic 
+    found_trig_bestnr  = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
+                             null_thresh=null_thresh,snr_threshold=snr_thresh,\
+                             sngl_snr_threshold = sngl_snr_thresh,\
+                             chisq_threshold = new_snr_thresh,\
+                             null_grad_thresh = null_grad_thresh,\
+                             null_grad_val = null_grad_val) for t in found_trigs]
+    found_trig_bestnr   = np.asarray(found_trig_bestnr)
+
+    # Construct conditions for:
+    # 1) found louder than background,
+    zero_fap = np.zeros(len(found_injs)).astype(np.bool)
+    zero_fap_cut = found_trig_bestnr > max_bestnr
+    zero_fap    = zero_fap | (zero_fap_cut)
+
+    # 2) found (bestnr > 0) but not louder than background (non-zero FAP)
+    nonzero_fap = ~zero_fap & (found_trig_bestnr!=0)
+
+    # 3) Missed
+    missed = (~zero_fap) & (~nonzero_fap)
+
+
+
     # Extract columns
     found_inj_time   = np.asarray(found_injs.get_column('geocent_end_time')) +\
                        np.asarray(found_injs.get_column('geocent_end_time_ns')*\
@@ -588,15 +613,8 @@ if doinj:
 
     # TODO: a lot of this is identical to all the stuff above
     found_trig_mchirp  = np.asarray(found_trigs.get_column('mchirp'))
-    found_trig_bestnr  = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
-                             null_thresh=null_thresh,snr_threshold=snr_thresh,\
-                             sngl_snr_threshold = sngl_snr_thresh,\
-                             chisq_threshold = new_snr_thresh,\
-                             null_grad_thresh = null_grad_thresh,\
-                             null_grad_val = null_grad_val) for t in found_trigs]
     found_trig_m1       = np.asarray(found_trigs.get_column('mass1'))
     found_trig_m2       = np.asarray(found_trigs.get_column('mass2'))
-    found_trig_bestnr   = np.asarray(found_trig_bestnr)
     found_trig_ra       = np.asarray(found_trigs.get_column('ra'))
     found_trig_dec      = np.asarray(found_trigs.get_column('dec'))
     found_sky_angle     = np.arccos(np.cos(found_inj_dec - found_trig_dec) -\
@@ -610,18 +628,6 @@ if doinj:
     found_trig_sngl_snr = dict((ifo, np.asarray(found_trigs.get_sngl_snr(ifo)))\
                             for ifo in ifos)
  
-    # Construct conditions for found louder than background, found not louder
-    # than background, and missed
-    zero_fap = np.zeros(len(found_injs)).astype(np.bool)
-    zero_fap_cut = found_trig_bestnr > max_bestnr
-    zero_fap    = zero_fap | (zero_fap_cut)
-
-    # Non-zero FAP but bestnr > 0
-    nonzero_fap = ~zero_fap & (found_trig_bestnr!=0)
-
-    # Missed
-    missed = (~zero_fap) & (~nonzero_fap)
-
     # Separate triggers into:
     # zero_fap 'g_found', nonzero_fap 'g_ifar', and missed 'missed_inj'
     # TODO: explain g_missed2
@@ -640,7 +646,6 @@ if doinj:
     g_found_time        = found_inj_time[zero_fap]
     g_found_sky_angle   = found_sky_angle[zero_fap]
     g_found_inc         = found_inj_inc[zero_fap]
-
     g_found_spin1x      = found_inj_spin1x[zero_fap]
     g_found_spin1y      = found_inj_spin1y[zero_fap]
     g_found_spin1z      = found_inj_spin1z[zero_fap]
@@ -651,6 +656,8 @@ if doinj:
     # Non-zero FAP
     g_ifar_mchirp        = found_inj_mchirp[nonzero_fap]
     g_ifar_mtot          = found_inj_mtot[nonzero_fap]
+    g_ifar_m1            = found_inj_m1[nonzero_fap]
+    g_ifar_m2            = found_inj_m2[nonzero_fap]
     g_ifar_eff_site_dist = dict((ifo, found_inj_eff_site_dist[ifo][nonzero_fap])\
                               for ifo in sites)
     g_ifar_eff_dist      = found_inj_eff_dist[nonzero_fap]
@@ -658,6 +665,15 @@ if doinj:
     g_ifar_dist          = found_inj_dist[nonzero_fap]
     g_ifar_time          = found_inj_time[nonzero_fap]
     g_ifar_sky_angle     = found_sky_angle[nonzero_fap]
+    g_ifar_inc           = found_inj_inc[nonzero_fap]
+    g_ifar_spin1x        = found_inj_spin1x[nonzero_fap]
+    g_ifar_spin1y        = found_inj_spin1y[nonzero_fap]
+    g_ifar_spin1z        = found_inj_spin1z[nonzero_fap]
+    g_ifar_spin2x        = found_inj_spin2x[nonzero_fap]
+    g_ifar_spin2y        = found_inj_spin2y[nonzero_fap]
+    g_ifar_spin2z        = found_inj_spin2z[nonzero_fap]
+    g_ifar_ra            = found_inj_ra[nonzero_fap]
+    g_ifar_dec           = found_inj_dec[nonzero_fap]
 
     g_ifar_trig          = np.asarray(found_trigs)[nonzero_fap]
     g_ifar_inj           = np.asarray(found_injs)[nonzero_fap]
@@ -672,18 +688,11 @@ if doinj:
     # Statistics: found-missed
     FM = MF[::-1]
 
-    g_ifar_m1           = found_inj_m1[nonzero_fap]
-    g_ifar_m2           = found_inj_m2[nonzero_fap]
     g_ifar_rec_m1       = found_trig_m1[nonzero_fap]
     g_ifar_rec_m2       = found_trig_m2[nonzero_fap]
     g_ifar_rec_mchirp   = found_trig_mchirp[nonzero_fap]
-
-    g_ifar_inc          = found_inj_inc[nonzero_fap]
-    g_ifar_ra           = found_inj_ra[nonzero_fap]
-    g_ifar_dec          = found_inj_dec[nonzero_fap]
     g_ifar_rec_ra       = found_trig_ra[nonzero_fap]
     g_ifar_rec_dec      = found_trig_dec[nonzero_fap]
-
     g_ifar_snr          = found_trig_snr[nonzero_fap]
     g_ifar_chisq        = found_trig_chisq[nonzero_fap]
     g_ifar_bank         = found_trig_bank[nonzero_fap]
@@ -692,36 +701,35 @@ if doinj:
     g_ifar_sngl_snr     = dict((ifo, found_trig_sngl_snr[ifo][nonzero_fap])\
                                for ifo in ifos)
 
-    g_ifar_spin1x       = found_inj_spin1x[nonzero_fap]
-    g_ifar_spin1y       = found_inj_spin1y[nonzero_fap]
-    g_ifar_spin1z       = found_inj_spin1z[nonzero_fap]
-    g_ifar_spin2x       = found_inj_spin2x[nonzero_fap]
-    g_ifar_spin2y       = found_inj_spin2y[nonzero_fap]
-    g_ifar_spin2z       = found_inj_spin2z[nonzero_fap]
-
     # Missed
     g_missed2_mchirp     = found_inj_mchirp[missed]
     g_missed2_mtot       = found_inj_mtot[missed]
+    g_missed2_m1         = found_inj_m1[missed]
+    g_missed2_m2         = found_inj_m2[missed]
     g_missed2_eff_site_dist = dict((ifo, found_inj_eff_site_dist[ifo][missed])\
                                    for ifo in sites)
     g_missed2_eff_dist   = found_inj_eff_dist[missed]
     g_missed2_det_stat   = found_trig_bestnr[missed]
     g_missed2_dist       = found_inj_dist[missed]
     g_missed2_time       = found_inj_time[missed]
+    g_missed2_inc        = found_inj_inc[missed]
+    g_missed2_spin1x     = found_inj_spin1x[missed]
+    g_missed2_spin1y     = found_inj_spin1y[missed]
+    g_missed2_spin1z     = found_inj_spin1z[missed]
+    g_missed2_spin2x     = found_inj_spin2x[missed]
+    g_missed2_spin2y     = found_inj_spin2y[missed]
+    g_missed2_spin2z     = found_inj_spin2z[missed]
+    g_missed2_ra         = found_inj_ra[missed]
+    g_missed2_dec        = found_inj_dec[missed]
+
     g_missed2_trig       = np.asarray(found_trigs)[missed]
     g_missed2_inj        = np.asarray(found_injs)[missed]
-    g_missed2_m1         = found_inj_m1[missed]
-    g_missed2_m2         = found_inj_m2[missed]
+
     g_missed2_rec_m1     = found_trig_m1[missed]
     g_missed2_rec_m2     = found_trig_m2[missed]
     g_missed2_rec_mchirp = found_trig_mchirp[missed]
-
-    g_missed2_ra         = found_inj_ra[missed]
-    g_missed2_dec        = found_inj_dec[missed]
     g_missed2_rec_ra     = found_trig_ra[missed]
     g_missed2_rec_dec    = found_trig_dec[missed]
-    g_missed2_inc        = found_inj_inc[missed]
-
     g_missed2_snr        = found_trig_snr[missed]
     g_missed2_chisq      = found_trig_chisq[missed]
     g_missed2_bank       = found_trig_bank[missed]
@@ -729,13 +737,6 @@ if doinj:
     g_missed2_null       = found_trig_null_snr[missed]
     g_missed2_sngl_snr   = dict((ifo, found_trig_sngl_snr[ifo][missed])\
                                 for ifo in ifos)
-
-    g_missed2_spin1x     = found_inj_spin1x[missed]
-    g_missed2_spin1y     = found_inj_spin1y[missed]
-    g_missed2_spin1z     = found_inj_spin1z[missed]
-    g_missed2_spin2x     = found_inj_spin2x[missed]
-    g_missed2_spin2y     = found_inj_spin2y[missed]
-    g_missed2_spin2z     = found_inj_spin2z[missed]
 
     # Set the sigma values
     inj_sigma = found_trigs.get_sigmasqs()
@@ -1095,40 +1096,24 @@ if doinj:
 fnd_col = cm.get_cmap()(0)
 
 # Plot cumulative histograms
-np.savetxt('%s/bestnr_vs_fap_numbers.txt' %(outdir),
-           full_time_bin_veto_max_bestnr, delimiter='/t')
-fig = plt.figure()
-ax = fig.gca()
-cumplot = plotutils.CumulativeHistogramPlot("BestNR",
-                                             "False alarm probability",
-                                             "")
-cumplot.add_background([item] for item in full_time_bin_veto_max_bestnr)
-cumplot.finalize(num_bins=50)
-cumplot.ax.set_ylim(ymax=1.2)
-cumplot.savefig('%s/bestnr_vs_fap.png' % (outdir))
-plt.close()
-
-fig = plt.figure()
-ax = fig.gca()
-cumplot = plotutils.CumulativeHistogramPlot("SNR",
-                                             "False alarm probability",
-                                             "")
-cumplot.add_background([item] for item in full_time_bin_veto_max_snr)
-cumplot.finalize(num_bins=50)
-cumplot.ax.set_ylim(ymax=1.2)
-cumplot.savefig('%s/snr_vs_fap.png' % (outdir))
-plt.close()
-
-fig = plt.figure()
-ax = fig.gca()
-cumplot = plotutils.CumulativeHistogramPlot("SNR after signal based vetoes",
-                                             "False alarm probability",
-                                             "")
-cumplot.add_background([item] for item in full_time_bin_veto_max_snr_uncut)
-cumplot.finalize(num_bins=50)
-cumplot.ax.set_ylim(ymax=1.2)
-cumplot.savefig('%s/snruncut_vs_fap.png' % (outdir))
-plt.close()
+# TODO: promote to execcutable with stat as option
+x_label_dict = {"bestnr": "BestNR",
+                "snr": "SNR",
+                "snruncut": "SNR after signal based vetoes"}
+data_dict = {"bestnr": full_time_bin_veto_max_bestnr,
+             "snr": full_time_bin_veto_max_snr,
+             "snruncut": full_time_bin_veto_max_snr_uncut}
+for stat in ["bestnr", "snr", "snruncut"]:
+    fig = plt.figure()
+    ax = fig.gca()
+    cumplot = plotutils.CumulativeHistogramPlot(x_label_dict[stat],
+                                                 "False alarm probability",
+                                                 "")
+    cumplot.add_background([item] for item in data_dict[stat])
+    cumplot.finalize(num_bins=50)
+    cumplot.ax.set_ylim(ymax=1.2)
+    cumplot.savefig('%s/%s_vs_fap.png' % (outdir, stat))
+    plt.close()
 
 if doinj:
     dist_plot_vals = [np.asarray(bin).mean() for bin in dist_bins]
