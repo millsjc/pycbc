@@ -1134,7 +1134,7 @@ if doinj:
     totalinjs_no_mc = num_injections_no_mc[:-1]
 
     # Calculate error bars for efficiency/distance plot
-    # TODO: serial coding
+    # TODO: serial coding (and repeated further down?!)
     yerr_common   = totalinjs * (2 * finjs + 1)
     yerr_denom    = 2*totalinjs*(totalinjs + 1)
     yerr_vary     = 4 * totalinjs * finjs * (totalinjs - finjs) + totalinjs**2
@@ -1294,185 +1294,66 @@ if doinj:
     plt.close()
 
     # Plot found/missed injections
-    # found missed effective distance v chirp mass
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(missed_inj_mchirp):
-        ax.scatter(missed_inj_mchirp, missed_inj_eff_dist, c="k", marker="x", s=10)
-    if len(g_missed2_mchirp):
-        ax.scatter(g_missed2_mchirp, g_missed2_eff_dist, c="r", marker="x", s=10)
-    if len(g_ifar_mchirp):
-        p = ax.scatter(g_ifar_mchirp[FM], g_ifar_eff_dist[FM], c=g_ifar_stat[FM],
-                       vmin=0, vmax=1, s=40, edgecolor="w")
-    if len(g_found_mchirp):
-        ax.scatter(g_found_mchirp, g_found_eff_dist, c=fnd_col, marker="+", s=30)
-    if len(g_ifar_mchirp):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Chirp Mass (solar masses)")
-    ax.set_ylabel("Inverse sum of effective distances (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    plt.tight_layout()
-    fig.savefig('%s/found_missed_injections_effdist.png' % outdir)
-    plt.close()
-
-    # Missed found effective distance v chirp mass
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(g_found_mchirp):
-        ax.scatter(g_found_mchirp, g_found_eff_dist, c=fnd_col, marker="+", s=15)
-    if len(g_ifar_mchirp):
-        p = ax.scatter(g_ifar_mchirp[MF], g_ifar_eff_dist[MF], c=g_ifar_stat[MF],
-                       vmin=0, vmax=1, s=40, edgecolor="w")
-    if len(g_missed2_mchirp):
-        ax.scatter(g_missed2_mchirp, g_missed2_eff_dist, c="r", marker="x", s=40)
-    if len(missed_inj_mchirp):
-        ax.scatter(missed_inj_mchirp, missed_inj_eff_dist, c="k", marker="x", s=40)
-    if len(g_ifar_mchirp):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Chirp Mass (solar masses)")
-    ax.set_ylabel("Inverse sum of effective distances (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    plt.tight_layout()
-    fig.savefig('%s/missed_found_injections_effdist.png' % outdir)
-    plt.close()
-
-    # found missed effective distance v time
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(missed_inj_time):
-        ax.scatter(missed_inj_time, missed_inj_eff_dist, c="k", marker='x', s=10)
-    if len(g_missed2_time):
-        ax.scatter(g_missed2_time, g_missed2_eff_dist, c="r", marker='x', s=10)
-    if len(g_ifar_time):
-        p = ax.scatter(g_ifar_time[FM], g_ifar_eff_dist[FM], c=g_ifar_stat[FM], vmin=0,
-                       vmax=1, s=40, edgecolor="w")
-    if len(g_found_time):
-        ax.scatter(g_found_time, g_found_eff_dist, c=fnd_col, marker='+', s=30)
-    if len(g_ifar_time):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Time since %d" % grb_time)
-    ax.set_ylabel("Inverse sum of effective distances (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    ax.set_xlim(start, end)
-    plt.tight_layout()
-    fig.savefig("%s/found_missed_injections_effdist_time.png" % outdir)
-    plt.close()
-
-    # Missed found effective distance v time
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(g_found_time):
-        ax.scatter(g_found_time, g_found_eff_dist, c=fnd_col, marker='+', s=15)
-    if len(g_ifar_time):
-        p = ax.scatter(g_ifar_time[MF], g_ifar_eff_dist[MF], c=g_ifar_stat[MF], vmin=0,
-                       vmax=1, s=40, edgecolor="w")
-    if len(g_missed2_time):
-        ax.scatter(g_missed2_time, g_missed2_eff_dist, c="r", marker='x', s=40)
-    if len(missed_inj_time):
-        ax.scatter(missed_inj_time, missed_inj_eff_dist, c="k", marker='x', s=40)
-    if len(g_ifar_time):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Time since %d" % grb_time)
-    ax.set_ylabel("Inverse sum of effective distances (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    ax.set_xlim(start, end)
-    plt.tight_layout()
-    fig.savefig("%s/missed_found_injections_effdist_time.png" % outdir)
-    plt.close()
-
-    # found missed distance v chirp mass
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(missed_inj_mchirp):
-        ax.scatter(missed_inj_mchirp, missed_inj_dist, c="k", marker="x", s=10)
-    if len(g_missed2_mchirp):
-        ax.scatter(g_missed2_mchirp, g_missed2_dist, c="r", marker="x", s=10)
-    if len(g_ifar_mchirp):
-        p = ax.scatter(g_ifar_mchirp[FM], g_ifar_dist[FM], c=g_ifar_stat[FM], vmin=0,
-                       vmax=1, s=40, edgecolor="w")
-    if len(g_found_mchirp):
-        ax.scatter(g_found_mchirp, g_found_dist, c=fnd_col, marker="+", s=30)
-    if len(g_ifar_mchirp):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Chirp Mass (solar masses)")
-    ax.set_ylabel("Distance (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    plt.tight_layout()
-    fig.savefig("%s/found_missed_injections_dist.png" % outdir)
-    plt.close()
-
-    # missed found distance v chirp mass
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(g_found_mchirp):
-        ax.scatter(g_found_mchirp, g_found_dist, c=fnd_col, marker="+", s=15)
-    if len(g_ifar_mchirp):
-        p = ax.scatter(g_ifar_mchirp[MF], g_ifar_dist[MF], c=g_ifar_stat[MF], vmin=0,
-                       vmax=1, s=40, edgecolor="w")
-    if len(g_missed2_mchirp):
-        ax.scatter(g_missed2_mchirp, g_missed2_dist, c="r", marker="x", s=40)
-    if len(missed_inj_mchirp):
-        ax.scatter(missed_inj_mchirp, missed_inj_dist, c="k", marker="x", s=40)
-    if len(g_ifar_mchirp):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Chirp Mass (solar masses)")
-    ax.set_ylabel("Distance (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    plt.tight_layout()
-    fig.savefig("%s/missed_found_injections_dist.png" % outdir)
-    plt.close()
-
-    # Found missed distance v time
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(missed_inj_time):
-        ax.scatter(missed_inj_time, missed_inj_dist, c="k", marker='x', s=10)
-    if len(g_missed2_time):
-        ax.scatter(g_missed2_time, g_missed2_dist, c="r", marker='x', s=10)
-    if len(g_ifar_time):
-        p = ax.scatter(g_ifar_time[FM], g_ifar_dist[FM], c=g_ifar_stat[FM], vmin=0,
-                       vmax=1, s=40, edgecolor="w")
-    if len(g_found_time):
-        ax.scatter(g_found_time, g_found_dist, c=fnd_col, marker='+', s=30)
-    if len(g_ifar_time):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Time since %d" % grb_time)
-    ax.set_ylabel("Distance (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    ax.set_xlim(start, end)
-    plt.tight_layout()
-    fig.savefig("%s/found_missed_injections_dist_time.png" % outdir)
-    plt.close()
-
-    # missed found distance v time
-    fig = plt.figure()
-    ax = fig.gca(yscale="log")
-    if len(g_found_time):
-        ax.scatter(g_found_time, g_found_dist, c=fnd_col, marker='+', s=15)
-    if len(g_ifar_time):
-        p = ax.scatter(g_ifar_time[MF], g_ifar_dist[MF], c=g_ifar_stat[MF], vmin=0,
-                       vmax=1, s=40, edgecolor="w")
-    if len(g_missed2_time):
-        ax.scatter(g_missed2_time, g_missed2_dist, c="r", marker='x', s=40)
-    if len(missed_inj_time):
-        ax.scatter(missed_inj_time, missed_inj_dist, c="k", marker='x', s=40)
-    if len(g_ifar_time):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Time since %d" % grb_time)
-    ax.set_ylabel("Distance (Mpc)")
-    ax.set_title("Injection recovery vs background")
-    ax.set_xlim(start, end)
-    plt.tight_layout()
-    fig.savefig("%s/missed_found_injections_dist_time.png" % outdir)
-    plt.close()
+    # found missed effective distance, distance vs chirp mass, time
+    # TODO: make it executable and loop at workflow level
+    for fm_or_mf in ["found_missed", "missed_found"]:
+        for y_qty in ["eff_dist", "dist"]:
+            if y_qty == "eff_dist":
+                y_label = "Inverse sum of effective distances (Mpc)"
+                missed_inj_y = missed_inj_eff_dist
+                g_missed2_y = g_missed2_eff_dist
+                g_ifar_y = g_ifar_eff_dist
+                g_found_y = g_found_eff_dist
+            elif y_qty == "dist":
+                y_label = "Distance (Mpc)"
+                missed_inj_y = missed_inj_dist
+                g_missed2_y = g_missed2_dist
+                g_ifar_y = g_ifar_dist
+                g_found_y = g_found_dist
+            for x_qty in ["mchirp", "time"]:
+                if x_qty == "mchirp":
+                    x_label = "Chirp Mass (solar masses)"
+                    missed_inj_x = missed_inj_mchirp
+                    g_missed2_x = g_missed2_mchirp
+                    g_ifar_x = g_ifar_mchirp
+                    g_found_x = g_found_mchirp
+                elif x_qty == "time":
+                    x_label = "Time since %d" % grb_time
+                    missed_inj_x = missed_inj_time
+                    g_missed2_x = g_missed2_time
+                    g_ifar_x = g_ifar_time
+                    g_found_x = g_found_time
+                fig = plt.figure()
+                ax = fig.gca(yscale="log")
+                if fm_or_mf == "found_missed":
+                    if len(missed_inj_x):
+                        ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=10)
+                    if len(g_missed2_x):
+                        ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=10)
+                    if len(g_ifar_x):
+                        p = ax.scatter(g_ifar_x[FM], g_ifar_y[FM], c=g_ifar_stat[FM],
+                                       vmin=0, vmax=1, s=40, edgecolor="w")
+                    if len(g_found_x):
+                        ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=30)
+                elif fm_or_mf == "missed_found":
+                    if len(g_found_x):
+                        ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=15)
+                    if len(g_ifar_x):
+                        p = ax.scatter(g_ifar_x[MF], g_ifar_y[MF], c=g_ifar_stat[MF],
+                                       vmin=0, vmax=1, s=40, edgecolor="w")
+                    if len(g_missed2_x):
+                        ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=40)
+                    if len(missed_inj_x):
+                        ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=40)
+                if len(g_ifar_x):
+                    cb = plt.colorbar(p, label="FAP")
+                ax.grid()
+                ax.set_xlabel(x_label)
+                ax.set_ylabel(y_label)
+                ax.set_title("Injection recovery vs background")
+                plt.tight_layout()
+                fig.savefig('%s/%s_injections_%s_%s.png' % (outdir, fm_or_mf, y_qty, x_qty))
+                plt.close()
 
     # Site-specific plots
     sitename = { 'G':'GEO', 'H':'Hanford', 'L':'Livingston', 'V':'Virgo',\
