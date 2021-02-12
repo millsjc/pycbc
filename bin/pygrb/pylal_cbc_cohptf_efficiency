@@ -994,6 +994,13 @@ if doinj:
     np.savetxt('%s/foundonbestnrnomc.txt' % outdir, found_on_bestnr_no_mc.T)
     np.savetxt('%s/numinjections.txt' % outdir, num_injections.T)
     np.savetxt('%s/numinjectionsnomc.txt' % outdir, num_injections_no_mc.T)
+    file = open("%s/injection_recovery.html" % outdir, "w")
+    file.write("Total injections found louder than all background using %s "\
+               "is: %s<br>\n" % ('BestNR', found_max_bestnr[-1]))
+    file.write("Total injections found louder than all background (and "\
+               "nearby triggers in the offsource) using %s is: %s<br>"\
+               % ('BestNR', found_on_bestnr[-1]))
+    file.close()
 
     logging.info("Found/missed injection efficiency calculations completed.")
 
@@ -1094,6 +1101,9 @@ if doinj:
 
 # Define the 'found' injection colour
 fnd_col = cm.get_cmap()(0)
+# Define FAP colour
+ptfcolormap = cm.spring
+ptfcolormap.set_over('g')
 
 # Plot cumulative histograms
 # TODO: promote to execcutable with stat as option
@@ -1117,21 +1127,11 @@ for stat in ["bestnr", "snr", "snruncut"]:
 
 if doinj:
     dist_plot_vals = [np.asarray(bin).mean() for bin in dist_bins]
-    ptfcolormap = cm.spring
-    ptfcolormap.set_over('g')
-
-    # TODO: unused?
-    #line_colours = ['r-','b-','g-','m-','c-']
-    #line_colors = ['r','b','g','m','c']
-
-    file = open("%s/injection_recovery.html" % outdir, "w")
-    
+ 
     finjs         = found_max_bestnr[:-1] / num_mc_injs
     totalinjs     = num_injections[:-1] / num_mc_injs
     finjs_no_mc     = found_max_bestnr_no_mc[:-1]
     totalinjs_no_mc = num_injections_no_mc[:-1]
-    file.write("Total injections found louder than all background using %s "\
-               "is: %s<br>\n" % ('BestNR', found_max_bestnr[-1]))
 
     # Calculate error bars for efficiency/distance plot
     # TODO: serial coding
@@ -1207,9 +1207,6 @@ if doinj:
     finjs     = found_on_bestnr[:-1] / num_mc_injs
     finjs_no_mc = found_on_bestnr_no_mc[:-1]
 
-    file.write("Total injections found louder than all background (and "\
-               "nearby triggers in the offsource) using %s is: %s<br>"\
-               % ('BestNR', found_on_bestnr[-1]))
     fig = plt.figure()
     ax = fig.gca()
     ax.grid()
