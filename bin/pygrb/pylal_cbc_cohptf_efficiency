@@ -28,6 +28,7 @@ import copy
 import logging
 import pycbc.version
 from pycbc.results.pygrb_postprocessing_utils import extract_ifos_and_vetoes, load_xml_file, load_xml_table, load_segment_dict, load_time_slides, load_triggers, pygrb_plot_opts_parser
+import itertools
 # TODO: check if the following are needed 
 import matplotlib,re,optparse
 import numpy as np
@@ -1293,249 +1294,166 @@ if doinj:
     fig.savefig('%s/BestNR_on_efficiency.png' % (outdir))
     plt.close()
 
-    # Plot found/missed injections
-    # found missed effective distance, distance vs chirp mass, time
-    # TODO: make it executable and loop at workflow level
-    for fm_or_mf in ["found_missed", "missed_found"]:
-        for y_qty in ["eff_dist", "dist"]:
-            if y_qty == "eff_dist":
-                y_label = "Inverse sum of effective distances (Mpc)"
-                missed_inj_y = missed_inj_eff_dist
-                g_missed2_y = g_missed2_eff_dist
-                g_ifar_y = g_ifar_eff_dist
-                g_found_y = g_found_eff_dist
-            elif y_qty == "dist":
-                y_label = "Distance (Mpc)"
-                missed_inj_y = missed_inj_dist
-                g_missed2_y = g_missed2_dist
-                g_ifar_y = g_ifar_dist
-                g_found_y = g_found_dist
-            for x_qty in ["mchirp", "time"]:
-                if x_qty == "mchirp":
-                    x_label = "Chirp Mass (solar masses)"
-                    missed_inj_x = missed_inj_mchirp
-                    g_missed2_x = g_missed2_mchirp
-                    g_ifar_x = g_ifar_mchirp
-                    g_found_x = g_found_mchirp
-                elif x_qty == "time":
-                    x_label = "Time since %d" % grb_time
-                    missed_inj_x = missed_inj_time
-                    g_missed2_x = g_missed2_time
-                    g_ifar_x = g_ifar_time
-                    g_found_x = g_found_time
-                fig = plt.figure()
-                ax = fig.gca(yscale="log")
-                if fm_or_mf == "found_missed":
-                    if len(missed_inj_x):
-                        ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=10)
-                    if len(g_missed2_x):
-                        ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=10)
-                    if len(g_ifar_x):
-                        p = ax.scatter(g_ifar_x[FM], g_ifar_y[FM], c=g_ifar_stat[FM],
-                                       vmin=0, vmax=1, s=40, edgecolor="w")
-                    if len(g_found_x):
-                        ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=30)
-                elif fm_or_mf == "missed_found":
-                    if len(g_found_x):
-                        ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=15)
-                    if len(g_ifar_x):
-                        p = ax.scatter(g_ifar_x[MF], g_ifar_y[MF], c=g_ifar_stat[MF],
-                                       vmin=0, vmax=1, s=40, edgecolor="w")
-                    if len(g_missed2_x):
-                        ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=40)
-                    if len(missed_inj_x):
-                        ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=40)
-                if len(g_ifar_x):
-                    cb = plt.colorbar(p, label="FAP")
-                ax.grid()
-                ax.set_xlabel(x_label)
-                ax.set_ylabel(y_label)
-                ax.set_title("Injection recovery vs background")
-                plt.tight_layout()
-                fig.savefig('%s/%s_injections_%s_%s.png' % (outdir, fm_or_mf, y_qty, x_qty))
-                plt.close()
-
-    # Site-specific plots
+    # Plot found-missed and missed-found injections
+    # Plots: effective distance, distance vs chirp mass, time
+    # TODO: make it an executable and loop at workflow level
+    # Info for site-specific plots
     sitename = { 'G':'GEO', 'H':'Hanford', 'L':'Livingston', 'V':'Virgo',\
-                 'T':'TAMA' }
+                 'K':'KAGRA' }
+    inj_plots = list(itertools.product(["found_missed", "missed_found"],\
+                                       ["mchirp", "time"],\
+                                       ["eff_dist", "dist", "eff_site_dist"]))
+    inj_plots.append(["found_missed", "spin1", "spin2"])
+    inj_plots.append(["missed_found", "spin1", "spin2"])
+    inj_plots.append(["found_missed", "q", "mtot"])
+    inj_plots.append(["missed_found", "q", "mtot"])
+    for inj_plot in inj_plots:
+        print(inj_plot)
+        fm_or_mf = inj_plot[0]
+        x_qty = inj_plot[1]
+        y_qty = inj_plot[2] 
+        if x_qty == "mchirp":
+            x_label = "Chirp Mass (solar masses)"
+            missed_inj_x = missed_inj_mchirp
+            g_missed2_x = g_missed2_mchirp
+            g_ifar_x = g_ifar_mchirp
+            g_found_x = g_found_mchirp
+        elif x_qty == "time":
+            x_label = "Time since %d" % grb_time
+            missed_inj_x = missed_inj_time
+            g_missed2_x = g_missed2_time
+            g_ifar_x = g_ifar_time
+            g_found_x = g_found_time
+        elif x_qty == "spin1":
+            x_label = "Spin on 1st binary component"
+            found_inj_x = np.sqrt(found_inj_spin1x**2 + \
+                                  found_inj_spin1y**2 + \
+                                  found_inj_spin1z**2)
+            missed_inj_x = missed_inj_spin1
+            #if len(g_missed2_spin1x):
+            g_missed2_x = np.sqrt(g_missed2_spin1x**2 + \
+                                  g_missed2_spin1y**2 + \
+                                  g_missed2_spin1z**2)
+            #if len(g_ifar_spin1x):
+            g_ifar_x = np.sqrt(g_ifar_spin1x**2 + \
+                               g_ifar_spin1y**2 + \
+                               g_ifar_spin1z**2)
+            #if len(g_found_spin1x):
+            g_found_x = np.sqrt(g_found_spin1x**2 + \
+                                g_found_spin1y**2 + \
+                                g_found_spin1z**2)
+        elif x_qty == "q":
+            x_label = "Mass ratio q"
+            missed_inj_x = missed_inj_m2 / missed_inj_m1
+            missed_inj_x = np.where(missed_inj_x > 1, 1. / missed_inj_x, missed_inj_x)
+            g_missed2_x = g_missed2_m2 / g_missed2_m1
+            g_missed2_x = np.where(g_missed2_x > 1, 1. / g_missed2_x, g_missed2_x)
+            g_ifar_x = g_ifar_m2 / g_ifar_m1
+            g_ifar_x = np.where(g_ifar_x > 1, 1. / g_ifar_x, g_ifar_x)
+            g_found_x = g_found_m2 / g_found_m1
+            g_found_x = np.where(g_found_x > 1, 1. / g_found_x, g_found_x)
+        if y_qty == "eff_dist":
+            y_label = "Inverse sum of effective distances (Mpc)"
+            missed_inj_y = missed_inj_eff_dist
+            g_missed2_y = g_missed2_eff_dist
+            g_ifar_y = g_ifar_eff_dist
+            g_found_y = g_found_eff_dist
+            # The square brackets are for a one-iteration loop below
+            plot_loop = [None] 
+        elif y_qty == "dist":
+            y_label = "Distance (Mpc)"
+            missed_inj_y = missed_inj_dist
+            g_missed2_y = g_missed2_dist
+            g_ifar_y = g_ifar_dist
+            g_found_y = g_found_dist
+            # The square brackets are for a one-iteration loop below
+            plot_loop = [None]
+        elif y_qty == "eff_site_dist":
+            plot_loop = sites
+        elif y_qty == "spin2":
+            y_label = "Spin on 2nd binary component"
+            found_inj_y = np.sqrt(found_inj_spin2x**2 + \
+                                  found_inj_spin2y**2 + \
+                                  found_inj_spin2z**2)
+            missed_inj_y = missed_inj_spin2
+            #if len(g_missed2_spin1x):
+            g_missed2_y = np.sqrt(g_missed2_spin2x**2 + \
+                                  g_missed2_spin2y**2 + \
+                                  g_missed2_spin2z**2)
+            #if len(g_ifar_spin1x):
+            g_ifar_y = np.sqrt(g_ifar_spin2x**2 + \
+                               g_ifar_spin2y**2 + \
+                               g_ifar_spin2z**2)
+            #if len(g_found_spin1x):
+            g_found_y = np.sqrt(g_found_spin2x**2 + \
+                                g_found_spin2y**2 + \
+                                g_found_spin2z**2)
+            # The square brackets are for a one-iteration loop below
+            plot_loop = [None]
+        elif y_qty == "mtot":
+            y_label = "Total mass M (solar masses)"
+            missed_inj_y = missed_inj_m1 + missed_inj_m2
+            g_missed2_y = g_missed2_m1 + g_missed2_m2
+            g_ifar_y = g_ifar_m1 + g_ifar_m2
+            g_found_y= g_found_m1 + g_found_m2
+            # The square brackets are for a one-iteration loop below
+            plot_loop = [None]
+        for site in plot_loop: 
+            if site is not None:
+                y_label = "%s effective distance (Mpc)" % sitename[site]
+                missed_inj_y = missed_inj_eff_site_dist[site]
+                g_missed2_y = g_missed2_eff_site_dist[site]
+                g_ifar_y = g_ifar_eff_site_dist[site]
+                g_found_y = g_found_eff_site_dist[site]
+            fig = plt.figure()
+            if y_qty in ["mtot", "spin2"]:
+                ax = fig.gca()
+            else:
+                ax = fig.gca(yscale="log")
+            if fm_or_mf == "found_missed":
+                if len(missed_inj_x):
+                    ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=10)
+                if len(g_missed2_x):
+                    ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=10)
+                if len(g_ifar_x):
+                    p = ax.scatter(g_ifar_x[FM], g_ifar_y[FM], c=g_ifar_stat[FM],
+                                   vmin=0, vmax=1, s=40, edgecolor="w")
+                if len(g_found_x):
+                    ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=30)
+            elif fm_or_mf == "missed_found":
+                if len(g_found_x):
+                    ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=15)
+                if len(g_ifar_x):
+                    p = ax.scatter(g_ifar_x[MF], g_ifar_y[MF], c=g_ifar_stat[MF],
+                                   vmin=0, vmax=1, s=40, edgecolor="w")
+                if len(g_missed2_x):
+                    ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=40)
+                if len(missed_inj_x):
+                    ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=40)
+            if len(g_ifar_x):
+                cb = plt.colorbar(p, label="FAP")
+            ax.grid()
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            plot_path = "%s/%s_injections_%s_%s" % (outdir, fm_or_mf, y_qty, x_qty)
+            if x_qty == "spin1":
+                ax.set_title("Injection recovery with respect to component spins")
+                ax.set_xlim([0, np.ceil(10 * max(max_missed_inj_spin1,
+                                                 found_inj_x.max())) / 10])
+                ax.set_ylim([0, np.ceil(10 * max(max_missed_inj_spin2,
+                                                 found_inj_y.max())) / 10])
+            elif y_qty == "mtot":
+                ax.set_title("Injection recovery with respect to component masses")
+            elif site is not None:
+                ax.set_title("Injection recovery vs background")
+                plot_path += "_%s" % site.lower()
+            else:
+                ax.set_title("Injection recovery vs background")
+            plt.tight_layout()
+            plot_path += ".png"
+            fig.savefig(plot_path)
+            plt.close()
 
-    for site in sites:
-        fig = plt.figure()
-        ax = fig.gca(yscale="log")
-        if len(missed_inj_mchirp):
-            ax.scatter(missed_inj_mchirp, missed_inj_eff_site_dist[site], c="k", s=10,
-                       marker="x")
-        if len(g_missed2_mchirp):
-            ax.scatter(g_missed2_mchirp, g_missed2_eff_site_dist[site], c="r", s=10,
-                       marker="x")
-        if len(g_ifar_mchirp):
-            p = ax.scatter(g_ifar_mchirp[FM], g_ifar_eff_site_dist[site][FM],
-                           c=g_ifar_stat[FM], s=40, vmin=0, vmax=1, edgecolor="w")
-        if len(g_found_mchirp):
-            ax.scatter(g_found_mchirp, g_found_eff_site_dist[site], c=fnd_col, s=30,
-                       marker="+")
-        if len(g_ifar_mchirp):
-            cb = plt.colorbar(p, label="FAP")
-        ax.grid()
-        ax.set_xlabel("Chirp Mass (solar masses)")
-        ax.set_ylabel("%s effective distance (Mpc)" % sitename[site])
-        ax.set_title("Injection recovery vs background")
-        plt.tight_layout()
-        fig.savefig("%s/found_missed_injections_effdist_%s.png"\
-                     % (outdir, site.lower()))
-        plt.close()
-
-        fig = plt.figure()
-        ax = fig.gca(yscale="log")
-        if len(g_found_mchirp):
-            ax.scatter(g_found_mchirp, g_found_eff_site_dist[site], c=fnd_col, s=15,
-                       marker="+")
-        if len(g_ifar_mchirp):
-            p = ax.scatter(g_ifar_mchirp[MF], g_ifar_eff_site_dist[site][MF],
-                           c=g_ifar_stat[MF], s=40, vmin=0, vmax=1, edgecolor="w")
-        if len(g_missed2_mchirp):
-            ax.scatter(g_missed2_mchirp, g_missed2_eff_site_dist[site], c="r", s=40,
-                       marker="x")
-        if len(missed_inj_mchirp):
-            ax.scatter(missed_inj_mchirp, missed_inj_eff_site_dist[site], c="k", s=40,
-                       marker="x")
-        if len(g_ifar_mchirp):
-            cb = plt.colorbar(p, label="FAP")
-        ax.grid()
-        ax.set_xlabel("Chirp Mass (solar masses)")
-        ax.set_ylabel("%s effective distance (Mpc)" % sitename[site])
-        ax.set_title("Injection recovery vs background")
-        plt.tight_layout()
-        fig.savefig("%s/missed_found_injections_effdist_%s.png"\
-                     % (outdir, site.lower()))
-        plt.close()
-
-        fig = plt.figure()
-        ax = fig.gca(yscale="log")
-        if len(missed_inj_time):
-            ax.scatter(missed_inj_time, missed_inj_eff_site_dist[site], c="k", s=10,
-                       marker="x")
-        if len(g_missed2_time):
-            ax.scatter(g_missed2_time, g_missed2_eff_site_dist[site], c="r", s=10,
-                       marker="x")
-        if len(g_ifar_time):
-            p = ax.scatter(g_ifar_time[FM], g_ifar_eff_site_dist[site][FM],
-                           c=g_ifar_stat[FM], s=40, vmin=0, vmax=1, edgecolor="w")
-        if len(g_found_time):
-            ax.scatter(g_found_time, g_found_eff_site_dist[site], c=fnd_col, s=30,
-                       marker="+")
-        if len(g_ifar_time):
-            cb = plt.colorbar(p, label="FAP")
-        ax.grid()
-        ax.set_xlabel("Time since %d" % grb_time)
-        ax.set_ylabel("%s effective distance (Mpc)" % sitename[site])
-        ax.set_title("Injection recovery vs background")
-        ax.set_xlim(start, end)
-        plt.tight_layout()
-        fig.savefig("%s/found_missed_injections_effdist_time_%s.png"\
-                     % (outdir, site.lower()))
-        plt.close()
-
-        fig = plt.figure()
-        ax = fig.gca(yscale="log")
-        if len(g_found_time):
-            ax.scatter(g_found_time, g_found_eff_site_dist[site], c=fnd_col, s=15,
-                       marker="+")
-        if len(g_ifar_time):
-            p = ax.scatter(g_ifar_time[MF], g_ifar_eff_site_dist[site][MF],
-                           c=g_ifar_stat[MF], s=40, vmin=0, vmax=1, edgecolor="w")
-        if len(g_missed2_time):
-            ax.scatter(g_missed2_time, g_missed2_eff_site_dist[site], c="r", s=40,
-                       marker="x")
-        if len(missed_inj_time):
-            ax.scatter(missed_inj_time, missed_inj_eff_site_dist[site], c="k", s=40,
-                       marker="x")
-        if len(g_ifar_time):
-            cb = plt.colorbar(p, label="FAP")
-        ax.grid()
-        ax.set_xlabel("Time since %d" % grb_time)
-        ax.set_ylabel("%s effective distance (Mpc)" % sitename[site])
-        ax.set_title("Injection recovery vs background")
-        ax.set_xlim(start, end)
-        plt.tight_layout()
-        fig.savefig("%s/missed_found_injections_effdist_time_%s.png"\
-                     % (outdir, site.lower()))
-        plt.close()
-
-    # Injections vs. spins plot
-    fig = plt.figure()
-    ax = fig.gca()
-    found_inj_spin1 = np.sqrt(found_inj_spin1x**2 + found_inj_spin1y**2 + \
-                            found_inj_spin1z**2)
-    found_inj_spin2 = np.sqrt(found_inj_spin2x**2 + found_inj_spin2y**2 + \
-                            found_inj_spin2z**2)
-    if len(g_found_spin1x):
-        g_found_spin1 = np.sqrt(g_found_spin1x**2 + g_found_spin1y**2 + \
-                              g_found_spin1z**2)
-        g_found_spin2 = np.sqrt(g_found_spin2x**2 + g_found_spin2y**2 + \
-                              g_found_spin2z**2)
-        ax.scatter(g_found_spin1, g_found_spin2, c=fnd_col, s=15, marker="+")
-    if len(g_ifar_spin1x):
-        g_ifar_spin1 = np.sqrt(g_ifar_spin1x**2 + g_ifar_spin1y**2 + g_ifar_spin1z**2)
-        g_ifar_spin2 = np.sqrt(g_ifar_spin2x**2 + g_ifar_spin2y**2 + g_ifar_spin2z**2)
-        p = ax.scatter(g_ifar_spin1[MF], g_ifar_spin2[MF], c=g_ifar_stat[MF], s=40,
-                       vmin=0, vmax=1, edgecolor="w")
-    if len(g_missed2_spin1x):
-        g_missed2_spin1 = np.sqrt(g_missed2_spin1x**2 + g_missed2_spin1y**2 + \
-                                g_missed2_spin1z**2)
-        g_missed2_spin2 = np.sqrt(g_missed2_spin2x**2 + g_missed2_spin2y**2 + \
-                                g_missed2_spin2z**2)
-        ax.scatter(g_missed2_spin1, g_missed2_spin2, c="r", s=40, marker="x")
-    if len(missed_inj_spin1x):
-        ax.scatter(missed_inj_spin1, missed_inj_spin2, c="k", s=40, marker="x")
-    if len(g_ifar_spin1x):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Spin on 1st binary component")
-    ax.set_ylabel("Spin on 2nd binary component")
-    ax.set_title("Injection recovery with respect to component spins")
-    ax.set_xlim([0, np.ceil(10 * max(max_missed_inj_spin1,
-                                     found_inj_spin1.max())) / 10])
-    ax.set_ylim([0, np.ceil(10 * max(max_missed_inj_spin2,
-                                     found_inj_spin2.max())) / 10])
-    plt.tight_layout()
-    fig.savefig("%s/missed_found_injections_spins.png" % outdir)
-    plt.close()
-
-    # Injections vs. masses plot
-    g_found_q = g_found_m2 / g_found_m1
-    g_found_q = np.where(g_found_q > 1, 1. / g_found_q, g_found_q)
-    g_found_mtot = g_found_m1 + g_found_m2
-    g_ifar_q = g_ifar_m2 / g_ifar_m1
-    g_ifar_q = np.where(g_ifar_q > 1, 1. / g_ifar_q, g_ifar_q)
-    g_ifar_mtot = g_ifar_m1 + g_ifar_m2
-    g_missed2_q = g_missed2_m2 / g_missed2_m1
-    g_missed2_q = np.where(g_missed2_q > 1, 1. / g_missed2_q, g_missed2_q)
-    g_missed2_mtot = g_missed2_m1 + g_missed2_m2
-    missed_inj_q = missed_inj_m2 / missed_inj_m1
-    missed_inj_q = np.where(missed_inj_q > 1, 1. / missed_inj_q, missed_inj_q)
-    missed_inj_mtot = missed_inj_m1 + missed_inj_m2
-
-    fig = plt.figure()
-    ax = fig.gca()
-    if len(g_found_m1):
-        ax.scatter(g_found_q, g_found_mtot, c=fnd_col, s=15, marker="+")
-    if len(g_ifar_m1):
-        p = ax.scatter(g_ifar_q[MF], g_ifar_mtot[MF], c=g_ifar_stat[MF], s=40, vmin=0,
-                       vmax=1, edgecolor="w")
-    if len(g_missed2_m1):
-        ax.scatter(g_missed2_q, g_missed2_mtot, c="r", s=40, marker="x")
-    if len(missed_inj_m1):
-        ax.scatter(missed_inj_q, missed_inj_mtot, c="k", s=40, marker="x")
-    if len(g_ifar_m1):
-        cb = plt.colorbar(p, label="FAP")
-    ax.grid()
-    ax.set_xlabel("Mass ratio q")
-    ax.set_ylabel("Total mass M (solar masses)")
-    ax.set_title("Injection recovery with respect to component masses")
-    plt.tight_layout()
-    fig.savefig("%s/missed_found_injections_masses.png" % outdir)
-    plt.close()
 
     # Write inclination recovery to file
     np.savetxt("%s/found_inclinations.txt" % outdir, np.c_[g_found_time + grb_time,
