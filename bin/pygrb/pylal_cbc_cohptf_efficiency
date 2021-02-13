@@ -1312,7 +1312,7 @@ if doinj:
     inj_plots.append(["found_missed", "cosincl", "dist"])
     inj_plots.append(["missed_found", "cosincl", "dist"])
     for inj_plot in inj_plots:
-        print(inj_plot)
+        #print(inj_plot)
         fm_or_mf = inj_plot[0]
         x_qty = inj_plot[1]
         y_qty = inj_plot[2] 
@@ -1365,8 +1365,8 @@ if doinj:
             g_missed2_x = np.rad2deg(g_missed2_inc)
             max_inc = np.pi
         elif x_qty == "cosincl":
-            ax.set_xlabel("cos(iota)")
-            #ax.set_xlabel("cos(|iota|)")
+            x_label = "cos(iota)"
+            #x_label = "cos(|iota|)"
             g_found_x = g_found_inc 
             #g_found_x = 0.5 * np.pi - abs(g_found_inc - 0.5 * np.pi)
             g_found_x = np.cos(g_found_x)
