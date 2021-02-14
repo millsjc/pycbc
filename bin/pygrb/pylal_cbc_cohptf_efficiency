@@ -630,9 +630,9 @@ if doinj:
                             for ifo in ifos)
  
     # Separate triggers into:
-    # zero_fap 'g_found', nonzero_fap 'g_ifar', and missed 'missed_inj'
-    # TODO: explain g_missed2
-    # TODO: Use a class for these
+    # 1) zero_fap 'g_found'
+    # 2) nonzero_fap 'g_ifar'
+    # 3) missed because of vetoes 'g_missed2'
       
     # Zero FAP
     g_found_mchirp      = found_inj_mchirp[zero_fap]
@@ -702,7 +702,7 @@ if doinj:
     g_ifar_sngl_snr     = dict((ifo, found_trig_sngl_snr[ifo][nonzero_fap])\
                                for ifo in ifos)
 
-    # Missed
+    # Missed due to vetoes
     g_missed2_mchirp     = found_inj_mchirp[missed]
     g_missed2_mtot       = found_inj_mtot[missed]
     g_missed2_m1         = found_inj_m1[missed]
@@ -772,7 +772,7 @@ if doinj:
 
     logging.info("%d found injections analysed." % (len(found_injs)))
 
-    # Process missed injections
+    # Process missed injections 'missed_inj'
     missed_inj_mchirp = np.asarray(missed_injs.get_column('mchirp'))
     missed_inj_eff_site_dist =\
         dict((ifo, missed_injs.get_column('eff_dist_%s' % ifo.lower()))\
@@ -1107,7 +1107,7 @@ ptfcolormap = cm.spring
 ptfcolormap.set_over('g')
 
 # Plot cumulative histograms
-# TODO: promote to execcutable with stat as option
+# TODO: promote to executable with stat as option
 x_label_dict = {"bestnr": "BestNR",
                 "snr": "SNR",
                 "snruncut": "SNR after signal based vetoes"}
