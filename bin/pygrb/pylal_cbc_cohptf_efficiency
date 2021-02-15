@@ -829,12 +829,23 @@ if doinj:
     logging.info("%d missed injections analysed." % (len(missed_injs)))
 
     # Write inclination recovery to file
+    # TODO: some times had the grb_time, others did not. Now we have both.
     grb_time = segs['on'][1] - 1 # GRB start time
-    np.savetxt("%s/found_inclinations.txt" % outdir, np.c_[g_found_time,
-                                                           g_found_inc])
-    np.savetxt("%s/total_inclinations.txt" % outdir,
-               np.c_[np.concatenate((found_inj_time, missed_inj_time - grb_time)),
-                     np.concatenate((found_inj_inc, missed_inj_inc))])
+    f = open('%s/found_inclinations.txt' % outdir, 'w')
+    f.write('GPS time\tTime since %d\tInclination\n\n' % grb_time)
+    stacked = np.column_stack([g_found_time,
+                               g_found_time - grb_time,
+                               g_found_inc])
+    np.savetxt(f, stacked, delimiter='\t')
+    f.close()
+    f = open('%s/total_inclinations.txt' % outdir, 'w')
+    f.write('GPS time\tTime since %d\tInclination\n\n' % grb_time)
+    stacked = np.column_stack([np.concatenate((found_inj_time, missed_inj_time)),
+                               np.concatenate((found_inj_time - grb_time,
+                                               missed_inj_time - grb_time)),
+                               np.concatenate((found_inj_inc, missed_inj_inc))])
+    np.savetxt(f, stacked, delimiter='\t')
+    f.close()
 
     # Create new set of injections for efficiency calculations
     total_injs = len(found_injs) + len(missed_injs)
@@ -1513,14 +1524,6 @@ if doinj:
             plot_path += ".png"
             fig.savefig(plot_path)
             plt.close()
-
-
-    # Write inclination recovery to file
-    #np.savetxt("%s/found_inclinations.txt" % outdir, np.c_[g_found_time + grb_time,
-    #                                                       g_found_inc])
-    #np.savetxt("%s/total_inclinations.txt" % outdir,
-    #           np.c_[np.concatenate((found_inj_time, missed_inj_time)),
-    #                 np.concatenate((found_inj_inc, missed_inj_inc))])
 
     # TODO: finish writing up pycbc_pygrb_plot_sky_error for these 3 plots
     # Plot sky recovery
