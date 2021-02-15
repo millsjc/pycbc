@@ -828,7 +828,14 @@ if doinj:
     
     logging.info("%d missed injections analysed." % (len(missed_injs)))
 
+    # Write inclination recovery to file
     grb_time = segs['on'][1] - 1 # GRB start time
+    np.savetxt("%s/found_inclinations.txt" % outdir, np.c_[g_found_time + grb_time,
+                                                           g_found_inc])
+    np.savetxt("%s/total_inclinations.txt" % outdir,
+               np.c_[np.concatenate((found_inj_time, missed_inj_time)),
+                     np.concatenate((found_inj_inc, missed_inj_inc))])
+
     # Create new set of injections for efficiency calculations
     total_injs = len(found_injs) + len(missed_injs)
     long_inj_dist = stats.uniform.rvs(size=total_injs) * (upper_dist-lower_dist) +\
@@ -1509,11 +1516,11 @@ if doinj:
 
 
     # Write inclination recovery to file
-    np.savetxt("%s/found_inclinations.txt" % outdir, np.c_[g_found_time + grb_time,
-                                                           g_found_inc])
-    np.savetxt("%s/total_inclinations.txt" % outdir,
-               np.c_[np.concatenate((found_inj_time, missed_inj_time)),
-                     np.concatenate((found_inj_inc, missed_inj_inc))])
+    #np.savetxt("%s/found_inclinations.txt" % outdir, np.c_[g_found_time + grb_time,
+    #                                                       g_found_inc])
+    #np.savetxt("%s/total_inclinations.txt" % outdir,
+    #           np.c_[np.concatenate((found_inj_time, missed_inj_time)),
+    #                 np.concatenate((found_inj_inc, missed_inj_inc))])
 
     # TODO: finish writing up pycbc_pygrb_plot_sky_error for these 3 plots
     # Plot sky recovery
