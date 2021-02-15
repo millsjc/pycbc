@@ -548,14 +548,13 @@ if doinj:
 
     sites = [ifo[0] for ifo in ifos]
 
-    missed_injs = SimInspiralUtils.ReadSimInspiralFromFiles([missed_file])\
-            .veto(vetoes.union(vetoes.keys()))
 
-    found_injs_no_veto = SimInspiralUtils.ReadSimInspiralFromFiles([found_file])
+    # Triggers and injections recovered in some form
     found_trigs_nveto = MultiInspiralUtils.ReadMultiInspiralFromFiles([found_file])
+    found_injs_no_veto = SimInspiralUtils.ReadSimInspiralFromFiles([found_file])
 
-    found_injs = lsctables.New(lsctables.SimInspiralTable)
     found_trigs = lsctables.New(lsctables.MultiInspiralTable)
+    found_injs = lsctables.New(lsctables.SimInspiralTable)
 
     for trig,sim in zip(found_trigs_nveto,found_injs_no_veto):
         if sim.get_end() not in vetoes.union(vetoes.keys()):
@@ -564,30 +563,7 @@ if doinj:
 
     logging.info("Missed/found injections/triggers loaded.")
 
-    # Grab values of detection statistic 
-    found_trig_bestnr  = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
-                             null_thresh=null_thresh,snr_threshold=snr_thresh,\
-                             sngl_snr_threshold = sngl_snr_thresh,\
-                             chisq_threshold = new_snr_thresh,\
-                             null_grad_thresh = null_grad_thresh,\
-                             null_grad_val = null_grad_val) for t in found_trigs]
-    found_trig_bestnr   = np.asarray(found_trig_bestnr)
-
-    # Construct conditions for:
-    # 1) found louder than background,
-    zero_fap = np.zeros(len(found_injs)).astype(np.bool)
-    zero_fap_cut = found_trig_bestnr > max_bestnr
-    zero_fap    = zero_fap | (zero_fap_cut)
-
-    # 2) found (bestnr > 0) but not louder than background (non-zero FAP)
-    nonzero_fap = ~zero_fap & (found_trig_bestnr!=0)
-
-    # 3) Missed
-    missed = (~zero_fap) & (~nonzero_fap)
-
-
-
-    # Extract columns
+    # Extract columns of found injections and triggers
     found_inj_time   = np.asarray(found_injs.get_column('geocent_end_time')) +\
                        np.asarray(found_injs.get_column('geocent_end_time_ns')*\
                                   10**-9)
@@ -629,6 +605,27 @@ if doinj:
     found_trig_sngl_snr = dict((ifo, np.asarray(found_trigs.get_sngl_snr(ifo)))\
                             for ifo in ifos)
  
+    # Grab values of detection statistic 
+    found_trig_bestnr  = [get_bestnr(t,q=chisq_index, n=chisq_nhigh,\
+                             null_thresh=null_thresh,snr_threshold=snr_thresh,\
+                             sngl_snr_threshold = sngl_snr_thresh,\
+                             chisq_threshold = new_snr_thresh,\
+                             null_grad_thresh = null_grad_thresh,\
+                             null_grad_val = null_grad_val) for t in found_trigs]
+    found_trig_bestnr   = np.asarray(found_trig_bestnr)
+
+    # Construct conditions for injection:
+    # 1) found louder than background,
+    zero_fap = np.zeros(len(found_injs)).astype(np.bool)
+    zero_fap_cut = found_trig_bestnr > max_bestnr
+    zero_fap    = zero_fap | (zero_fap_cut)
+
+    # 2) found (bestnr > 0) but not louder than background (non-zero FAP)
+    nonzero_fap = ~zero_fap & (found_trig_bestnr!=0)
+
+    # 3) missed after being recovered (i.e., vetoed)
+    missed = (~zero_fap) & (~nonzero_fap)
+
     # Separate triggers into:
     # 1) zero_fap 'g_found'
     # 2) nonzero_fap 'g_ifar'
@@ -772,6 +769,10 @@ if doinj:
 
     logging.info("%d found injections analysed." % (len(found_injs)))
 
+    # Missed injections (ones not recovered at all)
+    missed_injs = SimInspiralUtils.ReadSimInspiralFromFiles([missed_file])\
+            .veto(vetoes.union(vetoes.keys()))
+
     # Process missed injections 'missed_inj'
     missed_inj_mchirp = np.asarray(missed_injs.get_column('mchirp'))
     missed_inj_eff_site_dist =\
@@ -827,6 +828,7 @@ if doinj:
     
     logging.info("%d missed injections analysed." % (len(missed_injs)))
 
+    grb_time = segs['on'][1] - 1 # GRB start time
     # Create new set of injections for efficiency calculations
     total_injs = len(found_injs) + len(missed_injs)
     long_inj_dist = stats.uniform.rvs(size=total_injs) * (upper_dist-lower_dist) +\
@@ -1007,8 +1009,7 @@ if doinj:
 
     # Write data to files
 
-    # Get grb time and start and end times
-    grb_time = segs['on'][1] - 1
+    # Get start and end times
     start = int(min(np.concatenate((found_inj_time,missed_inj_time))))
     end   = int(max(np.concatenate((found_inj_time,missed_inj_time))))
     duration = end - start
