@@ -51,6 +51,36 @@ __version__ = pycbc.version.git_verbose_msg
 __date__ = pycbc.version.date
 __program__ = "pycbc_pygrb_efficiency"
 
+# Calculate error bars and fraction of recovered injections
+# for efficiency/distance plot
+def efficiency_with_errs(found_bestnr, num_injections, num_mc_injs=0):
+
+    if not isinstance(num_mc_injs, int):
+        err_msg = "The parameter num_mc_injs is the number of Monte-Carlo "
+        err_msg += "injections.  It must be an integer."
+        logging.error(err_msg)
+
+    found_injs = found_bestnr[:-1]
+    total_injs = num_injections[:-1]
+    fraction = found_injs / total_injs
+
+    # Divide by Monte-Carlo iterations
+    if num_mc_injs:
+        found_injs = found_injs / num_mc_injs
+        total_injs = total_injs / num_mc_injs
+
+    # TODO: optimize
+    yerr_common  = total_injs * (2 * found_injs + 1)
+    yerr_denom   = 2 * total_injs * (total_injs + 1)
+    yerr_vary    = 4 * total_injs * found_injs * (total_injs - found_injs) + total_injs**2
+    yerr_vary    = yerr_vary**0.5
+    yerr_low     = (yerr_common - yerr_vary)/yerr_denom
+    yerr_low_mc  = fraction - yerr_low
+    yerr_high    = (yerr_common + yerr_vary)/yerr_denom
+    yerr_high_mc = yerr_high - fraction
+
+    return yerr_low_mc, yerr_high_mc, fraction
+
 # =============================================================================
 # Main script starts here
 # =============================================================================
@@ -1149,35 +1179,14 @@ for stat in ["bestnr", "snr", "snruncut"]:
 if doinj:
     dist_plot_vals = [np.asarray(bin).mean() for bin in dist_bins]
  
-    finjs         = found_max_bestnr[:-1] / num_mc_injs
-    totalinjs     = num_injections[:-1] / num_mc_injs
-    finjs_no_mc     = found_max_bestnr_no_mc[:-1]
-    totalinjs_no_mc = num_injections_no_mc[:-1]
-
     # Calculate error bars for efficiency/distance plot
-    # TODO: serial coding (and repeated further down?!)
-    yerr_common   = totalinjs * (2 * finjs + 1)
-    yerr_denom    = 2*totalinjs*(totalinjs + 1)
-    yerr_vary     = 4 * totalinjs * finjs * (totalinjs - finjs) + totalinjs**2
-    yerr_vary     = yerr_vary**0.5
-    yerr_low      = (yerr_common - yerr_vary)/yerr_denom
-    yerr_low_mc    = (finjs/totalinjs) - yerr_low
-    yerr_high     = (yerr_common + yerr_vary)/yerr_denom
-    yerr_high_mc   = yerr_high - (finjs/totalinjs)
-
-    yerr_common   = totalinjs_no_mc * (2 * finjs_no_mc + 1)
-    yerr_denom    = 2*totalinjs_no_mc*(totalinjs_no_mc + 1)
-    yerr_vary     = (4 * totalinjs_no_mc * finjs_no_mc * (totalinjs_no_mc-finjs_no_mc)\
-                     + totalinjs_no_mc**2)**0.5
-    yerr_low      = (yerr_common - yerr_vary)/yerr_denom
-    yerr_low_no_mc  = (finjs_no_mc/totalinjs_no_mc) - yerr_low
-    yerr_high     = (yerr_common + yerr_vary)/yerr_denom
-    yerr_high_no_mc = yerr_high - (finjs_no_mc/totalinjs_no_mc)
+    yerr_low_mc, yerr_high_mc, fraction_mc = efficiency_with_errs(found_max_bestnr, num_injections, num_mc_injs=num_mc_injs)
+    yerr_low_no_mc, yerr_high_no_mc, fraction_no_mc = efficiency_with_errs(found_max_bestnr_no_mc, num_injections_no_mc)
 
     # Save efficiency values to disk
     f = open('%s/efficiency_numbers.txt' % outdir, 'w')
     f.write('distance\tfraction\tyerr_low\tyerr_high\n\n')
-    stacked = np.column_stack([dist_plot_vals, finjs/totalinjs, yerr_low_mc,
+    stacked = np.column_stack([dist_plot_vals, fraction_mc, yerr_low_mc,
                                yerr_high_mc])
     np.savetxt(f, stacked, fmt='%.8e', delimiter='\t')
     f.close()
@@ -1185,11 +1194,11 @@ if doinj:
     # Plot efficiency
     fig = plt.figure()
     ax = fig.gca()
-    ax.plot(dist_plot_vals, (finjs_no_mc/totalinjs_no_mc), 'g-',
+    ax.plot(dist_plot_vals, (fraction_no_mc), 'g-',
             label='No marginalisation')
-    ax.errorbar(dist_plot_vals, (finjs_no_mc/totalinjs_no_mc),
+    ax.errorbar(dist_plot_vals, (fraction_no_mc),
                 yerr=[yerr_low_no_mc,yerr_high_no_mc], c = 'g')
-    marg_eff = finjs / totalinjs
+    marg_eff = fraction_mc
     if not np.isnan(marg_eff.sum()):
         ax.plot(dist_plot_vals, marg_eff, 'r-', label='Marginalised')
         ax.errorbar(dist_plot_vals, marg_eff, yerr=[yerr_low_mc,yerr_high_mc],
@@ -1206,7 +1215,8 @@ if doinj:
     plt.close()
 
     # Calculate 50% sensitive distance to file
-    eff_low = finjs_no_mc/totalinjs_no_mc
+    #eff_low = found_max_bestnr_no_mc[:-1] / num_injections_no_mc[:-1]
+    eff_low = fraction_no_mc
     eff_idx = np.where(eff_low<0.5)[0]
     if len(eff_idx)==0:
         sens_dist = -1
@@ -1225,37 +1235,17 @@ if doinj:
 
         sens_dist = d + (e - 0.5) * (d - d_low) / (e_low - e)
 
-    finjs     = found_on_bestnr[:-1] / num_mc_injs
-    finjs_no_mc = found_on_bestnr_no_mc[:-1]
-
     fig = plt.figure()
     ax = fig.gca()
     ax.grid()
-
-    yerr_common   = totalinjs_no_mc * (2 * finjs_no_mc + 1)
-    yerr_denom    = 2*totalinjs_no_mc*(totalinjs_no_mc + 1)
-    yerr_vary     = (4 * totalinjs_no_mc * finjs_no_mc *\
-                     (totalinjs_no_mc - finjs_no_mc) + totalinjs_no_mc**2) ** 0.5
-    yerr_low_no_mc  = (finjs_no_mc/totalinjs_no_mc) - \
-                    (yerr_common - yerr_vary)/yerr_denom
-    yerr_high_no_mc = (yerr_common + yerr_vary)/yerr_denom -\
-                    (finjs_no_mc/totalinjs_no_mc)
-
-    yerr_common   = totalinjs * (2 * finjs + 1)
-    yerr_denom    = 2*totalinjs*(totalinjs + 1)
-    yerr_vary     = 4 * totalinjs * finjs * (totalinjs - finjs) + totalinjs**2
-    yerr_vary     = yerr_vary**0.5
-    yerr_low      = (yerr_common - yerr_vary)/yerr_denom
-    yerr_low      = (finjs/totalinjs) - yerr_low
-    yerr_high     = (yerr_common + yerr_vary)/yerr_denom
-    yerr_high     = yerr_high - (finjs/totalinjs)
-
-    red_efficiency = (finjs/totalinjs) - (yerr_low) * scipy.stats.norm.isf(0.1)
-    ax.plot(dist_plot_vals, (finjs_no_mc/totalinjs_no_mc), 'g-',
+    yerr_low_no_mc, yerr_high_no_mc, fraction_no_mc = efficiency_with_errs(found_on_bestnr_no_mc, num_injections_no_mc)
+    yerr_low, yerr_high, fraction_mc = efficiency_with_errs(found_on_bestnr, num_injections, num_mc_injs=num_mc_injs)
+    red_efficiency = (fraction_mc) - (yerr_low) * scipy.stats.norm.isf(0.1)
+    ax.plot(dist_plot_vals, (fraction_no_mc), 'g-',
             label='No marginalisation')
-    ax.errorbar(dist_plot_vals, (finjs_no_mc/totalinjs_no_mc),
+    ax.errorbar(dist_plot_vals, (fraction_no_mc),
                 yerr=[yerr_low_no_mc,yerr_high_no_mc], c = 'g')
-    marg_eff = finjs / totalinjs
+    marg_eff = fraction_mc
     if not np.isnan(marg_eff.sum()):
         ax.plot(dist_plot_vals, marg_eff ,'r-', label='Marginalised')
         ax.errorbar(dist_plot_vals, marg_eff, yerr=[yerr_low,yerr_high], c = 'r')
@@ -1286,7 +1276,7 @@ if doinj:
     for percentile in [50, 90]:
         eff_idx = np.where(red_efficiency < (percentile / 100.))[0]
         if len(eff_idx) == 0:
-            green_efficiency = (finjs_no_mc / totalinjs_no_mc)
+            green_efficiency = (fraction_no_mc)
             excl_efficiency = green_efficiency
             eff_idx = np.where(green_efficiency < (percentile / 100.))[0]
         else:
@@ -1346,6 +1336,7 @@ if doinj:
                    'spin1': "Spin on 1st binary component",
                    'spin2': "Spin on 2nd binary component",
                    'sky_error': "Rec. sky error (radians)"}
+
     # Dictionaries of data to plot 
     g_found_dict = {'mchirp': g_found_mchirp, 'time': g_found_time,
                     'eff_dist': g_found_eff_dist, 'dist': g_found_dist,
@@ -1396,7 +1387,7 @@ if doinj:
                                        missed_inj_spin2z**2),
                       'sky_error': []}
 
-    # Loop
+    # Generate scatter plots
     for inj_plot in inj_plots:
         #print(inj_plot)
         fm_or_mf = inj_plot[0]
