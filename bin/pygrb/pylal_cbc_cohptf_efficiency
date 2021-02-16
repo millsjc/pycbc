@@ -1247,11 +1247,9 @@ if doinj:
 
     # Print efficiency curve to file
     file = open( "%s/efficiency_curve.txt" % outdir, "w" )
-    for i in range(len(dist_plot_vals)):
-        print >>file, dist_plot_vals[i], red_efficiency[i]
-    #file.write('Distance (Mpc)\tEfficiency including counting errors\n\n')
-    #np.savetxt('%s/efficiency_curve.txt' %(outdir),
-    #       full_time_bin_veto_max_bestnr, delimiter='/t')
+    file.write('Distance (Mpc)\tEfficiency including counting errors\n\n')
+    stacked = np.column_stack([dist_plot_vals, red_efficiency])
+    np.savetxt(file, stacked, delimiter='\t')
     file.close()
 
     # Calculate and save to disk 50% and 90% exclusion distances
