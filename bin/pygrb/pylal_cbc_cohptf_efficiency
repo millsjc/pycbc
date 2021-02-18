@@ -296,6 +296,8 @@ for slide_id in range(num_slides):
     trig_all_bestnr[slide_id] = np.array(trig_all_bestnr[slide_id])
 
 logging.info("Basic columns extracted.")
+
+# Calculate SNR and BestNR values and maxima
 trig_time   = {}
 trig_snr    = {}
 trig_bestnr = {}
@@ -405,7 +407,6 @@ for i in range(min(len(offsource_trigs), 30)):
                           for ifo in ifos ])
     d.extend([ slide_dict[trig_slide_id][ifo] for ifo in ifos])
     d.append('%.2f' % bestnr)
-    td.append(d)
 
 # Write to html file 
 # TODO (holds for most htmls below too): make this table sortable by column and not static
