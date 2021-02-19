@@ -230,7 +230,7 @@ for slide_id in range(num_slides):
                 continue
             err_msg = "Triggers found in input files not in the list of "
             err_msg += "analysed segments. This should not happen."
-            logging.err(err_msg)
+            logging.error(err_msg)
             sys.exit()
     ###### end of check #####
 
