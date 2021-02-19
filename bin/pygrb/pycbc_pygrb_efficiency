@@ -26,9 +26,8 @@ import sys
 import os
 import copy
 import logging
-from matplotlib import rc, cm
 import matplotlib.pyplot as plt
-# TODO: check if the following are needed
+from matplotlib import rc, cm
 import numpy as np
 import scipy
 from scipy import stats
@@ -36,9 +35,10 @@ import pycbc.version
 from pycbc.results.pygrb_postprocessing_utils import extract_ifos_and_vetoes
 from pycbc.results.pygrb_postprocessing_utils import load_xml_table
 from pycbc.results.pygrb_postprocessing_utils import load_segment_dict
+from pycbc.results.pygrb_postprocessing_utils import find_zero_lag_slide_id
 from pycbc.results.pygrb_postprocessing_utils import load_time_slides
 from pycbc.results.pygrb_postprocessing_utils import pygrb_plot_opts_parser
-#from pycbc.results.pygrb_postprocessing_utils import load_triggers
+from pycbc.results.pygrb_postprocessing_utils import efficiency_with_errs
 from glue import segments
 from glue.ligolw import lsctables
 
@@ -54,36 +54,6 @@ __version__ = pycbc.version.git_verbose_msg
 __date__ = pycbc.version.date
 __program__ = "pycbc_pygrb_efficiency"
 
-# Calculate error bars and fraction of recovered injections
-# for efficiency/distance plot
-def efficiency_with_errs(found_bestnr, num_injections, num_mc_injs=0):
-
-    if not isinstance(num_mc_injs, int):
-        err_msg = "The parameter num_mc_injs is the number of Monte-Carlo "
-        err_msg += "injections.  It must be an integer."
-        logging.error(err_msg)
-
-    only_found_injs = found_bestnr[:-1]
-    all_injs = num_injections[:-1]
-    fraction = only_found_injs / all_injs
-
-    # Divide by Monte-Carlo iterations
-    if num_mc_injs:
-        only_found_injs = only_found_injs / num_mc_injs
-        all_injs = all_injs / num_mc_injs
-
-    # TODO: optimize
-    yerr_common = all_injs * (2 * only_found_injs + 1)
-    yerr_denom = 2 * all_injs * (all_injs + 1)
-    yerr_vary = 4 * all_injs * only_found_injs * (all_injs - only_found_injs) \
-                + all_injs**2
-    yerr_vary = yerr_vary**0.5
-    yerr_low = (yerr_common - yerr_vary)/yerr_denom
-    yerr_low_mc = fraction - yerr_low
-    yerr_high = (yerr_common + yerr_vary)/yerr_denom
-    yerr_high_mc = yerr_high - fraction
-
-    return yerr_low_mc, yerr_high_mc, fraction
 
 # =============================================================================
 # Main script starts here
@@ -176,22 +146,9 @@ slide_dict = load_time_slides(trig_file)
 logging.info("Loading segments.")
 segment_dict = load_segment_dict(trig_file)
 
-# Identify the zero-lag slide
-# TODO: turn most/all into a single function with load_time_slides?
-#       load_triggers does a lot of this
-zero_lag_slide_id = None
+# Identify the zero-lag slide and the number of slides
+zero_lag_slide_id = find_zero_lag_slide_id(slide_dict)
 num_slides = len(slide_dict)
-for i in range(num_slides):
-    # Is this slide the zero-lag?
-    if max(slide_dict[i].values()) == 0:
-        if min(slide_dict[i].values()) == 0:
-            if zero_lag_slide_id is None:
-                zero_lag_slide_id = i
-            else:
-                raise BrokenError
-
-if zero_lag_slide_id is None:
-    raise BrokenError
 
 # Get segments
 segs = readSegFiles(opts.segment_dir)
@@ -278,7 +235,6 @@ msg = "Segments loaded and %d trials generated." % (total_trials)
 logging.info(msg)
 
 # Extract variables
-# TODO: do something along the lines of PygrbFilterOutput
 # TODO: do we really need these now the mass_bins are gone?
 trig_all_time = {}
 trig_all_snr = {}
@@ -396,7 +352,7 @@ full_time_bin_veto_max_snr.sort()
 full_time_bin_veto_max_snr_uncut.sort()
 full_time_bin_veto_max_bestnr.sort()
 
-max_bestnr = max([trig_bestnr[slide_id].max() if trig_snr[slide_id]
+max_bestnr = max([trig_bestnr[slide_id].max() if trig_snr[slide_id].size
                   else 0 for slide_id in range(num_slides)])
 
 # =======================
@@ -482,7 +438,6 @@ else:
 if doinj:
 
     sites = [ifo[0] for ifo in ifos]
-
 
     # Triggers and injections recovered in some form
     found_trigs_nveto = MultiInspiralUtils.ReadMultiInspiralFromFiles([found_file])
@@ -627,8 +582,8 @@ if doinj:
     logging.info("%d missed injections analysed.", len(missed_injs))
 
     # Write inclination recovery to file
-    # TODO: some times had the grb_time, others did not. Now we have both.
-    grb_time = segs['on'][1] - 1 # GRB start time
+    # GRB start time
+    grb_time = segs['on'][1] - 1
     f_incl_txt = open('%s/found_inclinations.txt' % outdir, 'w')
     f_incl_txt.write('GPS time\tTime since %d\tInclination\n\n' % grb_time)
     stacked = np.column_stack([g_found_time,
@@ -684,7 +639,7 @@ if doinj:
 
     # Now create the numbers for the efficiency plots; these include calibration
     # and waveform errors. These are incorporated by running over each injection
-    # 100 times, where each time we draw a random value of distance
+    # num_mc_injs times, where each time we draw a random value of distance
 
     # Distribute injections
     found_inj_dist_mc = np.ndarray((num_mc_injs+1, len(found_injs)))
@@ -862,7 +817,7 @@ if doinj:
     # Calculate and save to disk the 50% sensitive distance
     eff_low = fraction_no_mc
     eff_idx = np.where(eff_low < 0.5)[0]
-    if not eff_idx:
+    if eff_idx.size == 0:
         sens_dist = -1
         err_msg = "Efficiency does not drop below 50%!"
         logging.error(err_msg)
@@ -923,13 +878,13 @@ if doinj:
     # Calculate and save to disk 50% and 90% exclusion distances
     for percentile in [50, 90]:
         eff_idx = np.where(red_efficiency < (percentile / 100.))[0]
-        if not eff_idx:
+        if eff_idx.size == 0:
             green_efficiency = (fraction_no_mc)
             excl_efficiency = green_efficiency
             eff_idx = np.where(green_efficiency < (percentile / 100.))[0]
         else:
             excl_efficiency = red_efficiency
-        if eff_idx and eff_idx[0] != 0:
+        if eff_idx.size and eff_idx[0] != 0:
             i = eff_idx[0]
             d = dist_plot_vals[i]
             d_low = dist_plot_vals[i-1]

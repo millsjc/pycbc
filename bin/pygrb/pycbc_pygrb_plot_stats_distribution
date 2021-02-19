@@ -34,9 +34,9 @@ import pycbc.version
 from pycbc.results.pygrb_postprocessing_utils import extract_ifos_and_vetoes
 from pycbc.results.pygrb_postprocessing_utils import load_xml_table
 from pycbc.results.pygrb_postprocessing_utils import load_segment_dict
+from pycbc.results.pygrb_postprocessing_utils import find_zero_lag_slide_id
 from pycbc.results.pygrb_postprocessing_utils import load_time_slides
 from pycbc.results.pygrb_postprocessing_utils import pygrb_plot_opts_parser
-#from pycbc.results.pygrb_postprocessing_utils import load_triggers
 from glue import segments
 from glue.ligolw import lsctables
 
@@ -144,21 +144,8 @@ logging.info("Loading segments.")
 segment_dict = load_segment_dict(trig_file)
 
 # Identify the zero-lag slide
-# TODO: turn most/all into a single function with load_time_slides?
-#       load_triggers does a lot of this
-zero_lag_slide_id = None
+zero_lag_slide_id = find_zero_lag_slide_id(slide_dict)
 num_slides = len(slide_dict)
-for i in range(num_slides):
-    # Is this slide the zero-lag?
-    if max(slide_dict[i].values()) == 0:
-        if min(slide_dict[i].values()) == 0:
-            if zero_lag_slide_id is None:
-                zero_lag_slide_id = i
-            else:
-                raise BrokenError
-
-if zero_lag_slide_id is None:
-    raise BrokenError
 
 # Get segments
 segs = readSegFiles(opts.segment_dir)
@@ -245,7 +232,6 @@ msg = "Segments loaded and %d trials generated." % (total_trials)
 logging.info(msg)
 
 # Extract variables
-# TODO: do something along the lines of PygrbFilterOutput
 # TODO: do we really need these now the mass_bins are gone?
 trig_all_time = {}
 trig_all_snr = {}
@@ -363,7 +349,7 @@ full_time_bin_veto_max_snr.sort()
 full_time_bin_veto_max_snr_uncut.sort()
 full_time_bin_veto_max_bestnr.sort()
 
-max_bestnr = max([trig_bestnr[slide_id].max() if trig_snr[slide_id]
+max_bestnr = max([trig_bestnr[slide_id].max() if trig_snr[slide_id].size
                   else 0 for slide_id in range(num_slides)])
 
 # =======================
@@ -449,7 +435,6 @@ else:
 if doinj:
 
     sites = [ifo[0] for ifo in ifos]
-
 
     # Triggers and injections recovered in some form
     found_trigs_nveto = MultiInspiralUtils.ReadMultiInspiralFromFiles([found_file])
@@ -562,8 +547,8 @@ if doinj:
     logging.info("%d missed injections analysed.", len(missed_injs))
 
     # Write inclination recovery to file
-    # TODO: some times had the grb_time, others did not. Now we have both.
-    grb_time = segs['on'][1] - 1 # GRB start time
+    # GRB start time 
+    grb_time = segs['on'][1] - 1
     f_incl_txt = open('%s/found_inclinations.txt' % outdir, 'w')
     f_incl_txt.write('GPS time\tTime since %d\tInclination\n\n' % grb_time)
     stacked = np.column_stack([g_found_time,
@@ -619,7 +604,7 @@ if doinj:
 
     # Now create the numbers for the efficiency plots; these include calibration
     # and waveform errors. These are incorporated by running over each injection
-    # 100 times, where each time we draw a random value of distance
+    # num_mc_injs times, where each time we draw a random value of distance
 
     # Distribute injections
     found_inj_dist_mc = np.ndarray((num_mc_injs+1, len(found_injs)))
