@@ -427,9 +427,9 @@ full_time_bin_veto_max_snr.sort()
 full_time_bin_veto_max_snr_uncut.sort()
 full_time_bin_veto_max_bestnr.sort()
 
-max_snr = max([trig_snr[slide_id].max() if len(trig_snr[slide_id]) else 0 \
+max_snr = max([trig_snr[slide_id].max() if trig_snr[slide_id] else 0 \
                for slide_id in range(num_slides)])
-max_bestnr = max([trig_bestnr[slide_id].max() if len(trig_snr[slide_id]) else 0 \
+max_bestnr = max([trig_bestnr[slide_id].max() if trig_snr[slide_id] else 0 \
                for slide_id in range(num_slides)])
 
 if total_trials % 2:
@@ -834,7 +834,7 @@ if doinj:
     #missed_na = ['N/A'] * len(missed_injs)
     missed_na = [-0] * len(missed_injs)
 
-    if len(missed_inj_m1):
+    if missed_inj_m1:
         min_missed_inj_m1 = missed_inj_m1.min()
         max_missed_inj_m1 = missed_inj_m1.max()
         min_missed_inj_m2 = missed_inj_m2.min()
@@ -844,21 +844,6 @@ if doinj:
         max_missed_inj_m1 = 0
         min_missed_inj_m2 = 1e3
         max_missed_inj_m2 = 0
-
-    if len(missed_inj_spin1x):
-        missed_inj_spin1 = np.sqrt(missed_inj_spin1x**2 + missed_inj_spin1y**2 + \
-                                   missed_inj_spin1z**2)
-        missed_inj_spin2 = np.sqrt(missed_inj_spin2x**2 + missed_inj_spin2y**2 + \
-                                   missed_inj_spin2z**2)
-        min_missed_inj_spin1 = missed_inj_spin1.min()
-        max_missed_inj_spin1 = missed_inj_spin1.max()
-        min_missed_inj_spin2 = missed_inj_spin2.min()
-        max_missed_inj_spin2 = missed_inj_spin2.max()
-    else:
-        min_missed_inj_spin1 = 1
-        max_missed_inj_spin1 = 0
-        min_missed_inj_spin2 = 1
-        max_missed_inj_spin2 = 0
 
     logging.info("%d missed injections analysed.", len(missed_injs))
 

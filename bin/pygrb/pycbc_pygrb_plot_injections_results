@@ -364,7 +364,7 @@ full_time_bin_veto_max_snr.sort()
 full_time_bin_veto_max_snr_uncut.sort()
 full_time_bin_veto_max_bestnr.sort()
 
-max_bestnr = max([trig_bestnr[slide_id].max() if len(trig_snr[slide_id])
+max_bestnr = max([trig_bestnr[slide_id].max() if trig_snr[slide_id]
                   else 0 for slide_id in range(num_slides)])
 
 # =======================
@@ -702,7 +702,7 @@ if doinj:
     missed_inj_spin2y = np.asarray(missed_injs.get_column('spin2y'))
     missed_inj_spin2z = np.asarray(missed_injs.get_column('spin2z'))
 
-    if len(missed_inj_m1):
+    if missed_inj_m1:
         min_missed_inj_m1 = missed_inj_m1.min()
         max_missed_inj_m1 = missed_inj_m1.max()
         min_missed_inj_m2 = missed_inj_m2.min()
@@ -713,7 +713,7 @@ if doinj:
         min_missed_inj_m2 = 1e3
         max_missed_inj_m2 = 0
 
-    if len(missed_inj_spin1x):
+    if missed_inj_spin1x:
         missed_inj_spin1 = np.sqrt(missed_inj_spin1x**2 + missed_inj_spin1y**2 + \
                                    missed_inj_spin1z**2)
         missed_inj_spin2 = np.sqrt(missed_inj_spin2x**2 + missed_inj_spin2y**2 + \
@@ -1094,26 +1094,26 @@ if doinj:
             else:
                 ax = fig.gca(yscale="log")
             if fm_or_mf == "found_missed":
-                if len(missed_inj_x) and len(missed_inj_y):
+                if missed_inj_x and missed_inj_y:
                     ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=10)
-                if len(g_missed2_x):
+                if g_missed2_x:
                     ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=10)
-                if len(g_ifar_x):
+                if g_ifar_x:
                     p = ax.scatter(g_ifar_x[FM], g_ifar_y[FM], c=g_ifar_stat[FM],
                                    vmin=0, vmax=1, s=40, edgecolor="w")
                     cb = plt.colorbar(p, label="FAP")
-                if len(g_found_x):
+                if g_found_x:
                     ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=30)
             elif fm_or_mf == "missed_found":
-                if len(g_found_x):
+                if g_found_x:
                     ax.scatter(g_found_x, g_found_y, c=fnd_col, marker="+", s=15)
-                if len(g_ifar_x):
+                if g_ifar_x:
                     p = ax.scatter(g_ifar_x[MF], g_ifar_y[MF], c=g_ifar_stat[MF],
                                    vmin=0, vmax=1, s=40, edgecolor="w")
                     cb = plt.colorbar(p, label="FAP")
-                if len(g_missed2_x):
+                if g_missed2_x:
                     ax.scatter(g_missed2_x, g_missed2_y, c="r", marker="x", s=40)
-                if len(missed_inj_x) and len(missed_inj_y):
+                if missed_inj_x and missed_inj_y:
                     ax.scatter(missed_inj_x, missed_inj_y, c="k", marker="x", s=40)
             ax.grid()
             ax.set_xlabel(x_label)
