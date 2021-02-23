@@ -253,7 +253,8 @@ for i in range(min(len(offsource_trigs), 30)):
 # ==========================
 full_time_veto_max_snr = sort_stat(time_veto_max_snr)
 full_time_veto_max_snr_uncut = sort_stat(time_veto_max_snr_uncut)
-max_bestnr, _, full_time_veto_max_bestnr = max_median_stat(num_slides, time_veto_max_bestnr, trig_bestnr, total_trials)
+max_bestnr, _, full_time_veto_max_bestnr =\
+    max_median_stat(num_slides, time_veto_max_bestnr, trig_bestnr, total_trials)
 
 
 # =======================
@@ -269,17 +270,12 @@ if onsource_file:
     on_mchirp = on_trigs.get_column('mchirp')
 
     # Set loudest event arrays
-    # TODO: are these necessary?
     loud_on_bestnr_trigs = None
-    loud_on_snr_trigs = None
     loud_on_bestnr = 0
     loud_on_fap = 1
-    loud_on_snr = 0
 
     # Record loudest trig by SNR and by BestNR
     bin_trigs = sorted(np.asarray(on_trigs), key=lambda t: t.snr, reverse=True)
-    loud_on_snr_trigs = bin_trigs[0]
-    loud_on_snr = bin_trigs[0].snr
     bin_trigs.sort(key=lambda t: get_bestnr(t, q=chisq_index, n=chisq_nhigh,\
                                             null_thresh=null_thresh,\
                                             snr_threshold=snr_thresh,\
