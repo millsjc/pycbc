@@ -236,18 +236,6 @@ for slide_id in range(num_slides):
 offsource_trigs.sort(key=lambda element: element[0])
 offsource_trigs.reverse()
 
-for i in range(min(len(offsource_trigs), opts.num_loudest_off_trigs)):
-    bestnr = offsource_trigs[i][0]
-    trig = offsource_trigs[i][1]
-
-    # Get FAP of trigger
-    num_trials_louder = 0
-    for slide_id in range(num_slides):
-        for val in time_veto_max_bestnr[slide_id]:
-            if val > bestnr:
-                num_trials_louder += 1
-    fap = num_trials_louder/total_trials
-
 # ==========================
 # Print loudest SNRs to file
 # THIS OUTPUT FILE IS CURRENTLY UNUSED - MAYBE DELETE?
