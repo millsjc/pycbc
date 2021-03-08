@@ -1114,6 +1114,8 @@ def mc_cal_wf_errs(num_mc_injs, num_injs, inj_dists, cal_err, wf_err, max_dc_cal
     # errors incorporated by running over each injection num_mc_injs times,
     # where each time we draw a random value of distance.
 
+    # num_injs = len(num_mc_injs) or len(inj_dists)
+
     inj_dist_mc = numpy.ndarray((num_mc_injs+1, num_injs))
     inj_dist_mc[0, :] = inj_dists
     for i in range(num_mc_injs):
