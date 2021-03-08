@@ -871,7 +871,7 @@ if do_injections:
     td = [np.asarray(d) for d in td]
     html_table = pycbc.results.html_table(td, th,
                                           format_strings=format_strings,
-                                          page_size=50)
+                                          page_size=20)
     kwds = {'title' : "Quiet found injections",
             'caption' : "Recovered parameters and statistic values of \
             injections that are recovered, but not louder than background.",
@@ -913,7 +913,7 @@ if do_injections:
     t_missed = [np.asarray(d) for d in t_missed]
     html_table = pycbc.results.html_table(t_missed, th,
                                           format_strings=format_strings,
-                                          page_size=50)
+                                          page_size=20)
     kwds = {'title' : "Missed found injections",
             'caption' : "Recovered parameters and statistic values of \
             injections that are recovered, but downwieghted to BestNR = 0 \
