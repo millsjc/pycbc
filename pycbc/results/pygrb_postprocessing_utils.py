@@ -197,11 +197,6 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     parser.add_argument("--onsource-output-file", default=None, #required=True,
                         help="Exclusion distance output file.")
 
-    # pycbc_pygrb_page_table uses this too: does efficiency really need it?
-    parser.add_argument("--num-loudest-off-trigs", default=30,
-                        help="Number of loudest offsouce triggers to " +
-                        "output details abouth.")
-
     # FIXME: eventually remove below argument and require output-file
     # be specified. 
     parser.add_argument("--output-path", default=os.getcwd(), 
@@ -283,6 +278,11 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         "to use when calculating the V1 calibration " +
                         "amplitude error.")
     # pygrb_efficiency only options end here
+
+    # pycbc_pygrb_page_table uses this
+    parser.add_argument("--num-loudest-off-trigs", default=30,
+                        help="Number of loudest offsouce triggers to " +
+                        "output details abouth.")
 
     args = parser.parse_args()
     if not (args.trig_file or args.offsource_file):
