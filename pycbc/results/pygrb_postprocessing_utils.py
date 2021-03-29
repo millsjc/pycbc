@@ -330,13 +330,35 @@ def format_single_chisqs(trig_ifo_cs, ifos):
 
 
 # =============================================================================
+# Wrapper to read segments files
+# =============================================================================
+
+def read_seg_files(seg_dir):
+    """Given the segments directroy, read segments files"""
+    segs = readSegFiles(seg_dir)
+
+    return segs 
+
+
+# =============================================================================
+# Find GRB trigger time
+# =============================================================================
+
+def get_grb_time(seg_dir):
+    """Determine GRB trigger time"""
+    segs = read_seg_files(seg_dir)
+    grb_time = segs['on'][1] - 1
+
+    return grb_time
+
+
+# =============================================================================
 # Reset times so that t=0 is corresponds to the GRB trigger time
 # =============================================================================
 
 def reset_times(seg_dir, trig_data, inj_data, inj_file):
     """Reset times so that t=0 is corresponds to the GRB trigger time"""
-    segs = readSegFiles(seg_dir)
-    grb_time = segs['on'][1] - 1
+    grb_time = get_grb_time(seg_dir)
     start = int(min(trig_data.time)) - grb_time
     end = int(max(trig_data.time)) - grb_time
     duration = end-start
@@ -1179,7 +1201,7 @@ def process_trigs_for_followup(trig_file, seg_dir, veto_dir, veto_cat,
     num_slides = len(slide_dict)
 
     # Get segments
-    segs = readSegFiles(seg_dir)
+    segs = read_seg_files(seg_dir)
 
     # Construct trials
     trial_dict = construct_trials(num_slides, segs, segment_dict, ifos, 

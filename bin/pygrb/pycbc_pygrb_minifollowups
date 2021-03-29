@@ -37,10 +37,6 @@ import pycbc.workflow as wf
 import pycbc.events
 from pycbc.results import layout
 from pycbc.workflow.plotting import PlotExecutable
-try:
-    from pylal.coh_PTF_pyutils import readSegFiles
-except ImportError:
-    pass
 
 #def to_file(path, ifo=None):
 #    """
@@ -161,8 +157,7 @@ if args.wiki_file:
 
 # Trigger time 
 seg_dir = workflow.cp.get('workflow', 'segment-dir')
-segs = readSegFiles(seg_dir)
-trig_time = segs['on'][1] - 1
+trig_time = get_grb_time(seg_dir)
 
 # Establish the number of follow-ups to perform
 num_events = int(workflow.cp.get_opt_tags('workflow-minifollowups',
