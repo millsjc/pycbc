@@ -36,6 +36,7 @@ import pycbc.version
 import pycbc.workflow as wf
 import pycbc.events
 from pycbc.results import layout
+from pycbc.results.pygrb_postprocessing_utils import get_grb_time
 from pycbc.workflow.plotting import PlotExecutable
 
 #def to_file(path, ifo=None):
