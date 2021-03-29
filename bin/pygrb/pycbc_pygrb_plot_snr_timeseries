@@ -40,6 +40,8 @@ from pycbc.results.pygrb_postprocessing_utils import PygrbFilterOutput
 from pycbc.results.pygrb_postprocessing_utils import pygrb_shared_plot_setups
 from pycbc.results.pygrb_postprocessing_utils import pygrb_plot_opts_parser
 from pycbc.results.pygrb_postprocessing_utils import pygrb_plotter
+from pycbc.results.pygrb_postprocessing_utils import get_grb_time
+from pycbc.results.pygrb_postprocessing_utils import get_start_end_times
 from pycbc.results.pygrb_postprocessing_utils import reset_times
 
 plt.switch_backend('Agg')
@@ -119,17 +121,22 @@ injs = None
 if inj_file:
     injs = load_injections(inj_file, vetoes)
 
-# Extract injection data
+# Extract (or initialize) injection data
 inj_data = PygrbFilterOutput(injs, ifos,
                              lsctables.MultiInspiralTable.loadcolumns,
                              "injections", opts)
 
-# Generate plots
-logging.info("Plotting...")
+# Determine GRB trigger time, and trigger data start and end times
+grb_time = get_grb_time(seg_dir)
+start, end = get_start_end_times(trig_data, grb_time)
 
 # Reset trigger and injection times
-grb_time, start, end, trig_data, inj_data = reset_times(seg_dir, trig_data,
-                                                        inj_data, inj_file)
+trig_data = reset_times(trig_data, grb_time)
+if inj_file:
+    inj_data = reset_times(inj_data, grb_time)
+
+# Generate plots
+logging.info("Plotting...")
 
 # Determine what goes on the vertical axis
 y_labels = {'coherent': "Coherent SNR",
