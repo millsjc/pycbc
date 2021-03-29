@@ -196,6 +196,11 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     parser.add_argument('--plot-caption', default=None,
                         help="If given, use this as the plot caption")
     
+    # This is originally for SNR timeseries plots 
+    parser.add_argument('--central-time', type=float, default=None,
+                        help="Center plot on the given GPS time. If omitted, "+
+                        "use the GRB trigger time")
+
     # pygrb_efficiency only options: start here
     # Does this differ from trig-file? --> it doesn't contain the onsource.
     # NB: for now removed the requirement to specify trig_file.
