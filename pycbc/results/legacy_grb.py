@@ -27,6 +27,7 @@ import os
 from argparse import ArgumentParser
 from ligo import segments
 from glue import markup
+from pycbc.results import save_fig_with_metadata
 
 def initialize_page(title, style, script, header=None):
     """
@@ -729,12 +730,17 @@ def make_grb_segments_plot(wkflow, science_segs, trigger_time, trigger_name,
                                    linewidth=2))
     fig.axes[-1].set_xlabel('GPS Time')
 
-    fig.axes[0].set_title('Science Segments for GRB%s' % trigger_name)
     plt.tight_layout()
     fig.subplots_adjust(hspace=0)
 
     plot_name = 'GRB%s_segments.png' % trigger_name
-    plot_url = 'file://localhost%s/%s' % (out_dir, plot_name)
-    fig.savefig('%s/%s' % (out_dir, plot_name))
+    plot_path = '%s/%s' % (out_dir, plot_name)
+    plot_url = 'file://localhost%s' % plot_path
+    
+    title='Science Segments'
+    caption = 'Science Segments for GRB%s.' % trigger_name
+    
+    save_fig_with_metadata(fig, plot_path, cmd='make_grb_segments_plot()', 
+                           title=title, caption=caption)
 
     return [ifos, plot_name, extent, plot_url]

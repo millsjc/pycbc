@@ -709,13 +709,37 @@ def new_snr_chisq(snr, new_snr, chisq_dof, chisq_index=4.0, chisq_nhigh=3.0):
 # =============================================================================
 # TODO: use this to replace pylal.coh_PTF_pyutils.get_f_resp everywhere
 
-def get_antenna_response(ra, dec, geocent_time, ifo):
-    """Returns the antenna response sqrt(F+^2 + Fx^2) of an IFO at a """
-    """given sky location and time."""
+def get_antenna_response(ra, dec, geocent_time, ifo, unit, 
+                         inc=0.0, polarization=0.0):
+    """Returns the antenna responses for an IFO at a given sky"""
+    """location and time."""
 
-    i = Detector(ifo)
-    fp, fc = i.antenna_pattern(ra, dec, 0, geocent_time)
-    return fp**2 + fc**2
+    if unit == 'degrees':
+        ra_radians = float(ra) / 180.0 * numpy.pi
+        dec_radians = float(dec) / 180.0 * numpy.pi
+        inc_radians = float(inc) / 180.0 * numpy.pi
+    elif unit == 'radians':
+        ra_radians = ra
+        dec_radians = dec
+        inc_radians = inc
+    else:
+        logging.error('Unknown units')
+        return None
+        
+    fp, fc = Detector(ifo).antenna_pattern(ra_radians, dec_radians, 
+                                           polarization, t_gps=float(geocent_time))
+
+    # Sum of squares of the polarizations
+    f_ss = fp ** 2 + fc ** 2
+
+    # Weighted average of the polarizations
+    f_average = numpy.sqrt((fp ** 2 + fc ** 2) / 2)
+
+    # Effective distance / real distance
+    # From Duncan Browns Ph.D. eq. 4.3 on page 57
+    f_eff = numpy.sqrt(fp ** 2 * (1 + numpy.cos(inc_radians)) ** 2 / 4 + fc ** 2)
+    
+    return fp, fc, f_ss, f_average, f_eff
 
 
 # =============================================================================

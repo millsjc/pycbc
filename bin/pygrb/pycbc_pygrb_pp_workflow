@@ -43,6 +43,7 @@ from pycbc.workflow import pegasus_workflow as wdax
 #from pycbc.workflow.core import Executable, makedir
 from six.moves.urllib.request import pathname2url
 from six.moves.urllib.parse import urljoin
+from shutil import copyfile
 
 __author__ = "Francesco Pannarale  <francesco.pannarale@ligo.org>"
 __version__ = pycbc.version.git_verbose_msg
@@ -210,6 +211,34 @@ def make_pygrb_injs_tables(workflow, out_dir, # exclude=None, require=None,
 
     return node, node.output_files
 
+
+def make_pygrb_info_table(workflow, out_dir, tags=[]):
+    """Adds a PyGRB job to make GRB info table"""
+
+    # Exectuable
+    exec_name = 'pygrb_grb_summary'
+    logging.info("Executable name: %s", exec_name)
+    
+    # Initialize job node
+    node = PlotExecutable(workflow.cp, exec_name,
+                          ifos=workflow.ifos, out_dir=out_dir,
+                          tags=tags).create_node()
+
+    # Add command line options
+    for opt in ['trigger-time', 'ra', 'dec']:
+        node.add_opt('--'+opt, workflow.cp.get('workflow', opt))
+
+    node.add_opt('--ifos', ' '.join(workflow.ifos))
+
+    # Set output file
+    node.new_output_file_opt(workflow.analysis_time, '.html', '--output-file', tags=tags)
+
+    # Add job node to the workflow
+    workflow += node
+
+    return node, node.output_files
+
+
 # Based on setup_single_det_minifollowups
 def setup_pygrb_minifollowups(workflow, followups_file, ifos,
                               dax_output, out_dir,
@@ -355,26 +384,30 @@ logfile.setFormatter(formatter)
 logging.getLogger('').addHandler(logfile)
 logging.info("Created log file %s", wf_log_file.storage_path)
 
-
-# TODO: Pick up inifile, segments plot, GRB time and location, report IFO responses
-# Read the configuration file
-# typecast str from command line to File instances
-#cp = configuration.WorkflowConfigParser(opts.pp_config_file)
-#cp_file_name = workflow_name + ".ini"
-#with open('inference.ini', 'w') as ff:
-#    cp.write(ff)
-#config_file = to_file('inference.ini')
-
 #
-# Plot sky grid
-#
+# Summary Information
+# 
 out_dir = rdir.base
 _workflow.makedir(out_dir)
 files = _workflow.FileList([])
-plot_node, output_files = make_pygrb_plot(wflow, 'pygrb_plot_skygrid', out_dir=out_dir)
+# GRB info table
+html_node, summary_table = make_pygrb_info_table(wflow, out_dir)
+html_nodes.append(html_node)
+# Plot sky grid
+plot_node, sky_grid = make_pygrb_plot(wflow, 'pygrb_plot_skygrid', out_dir=out_dir)
 plotting_nodes.append(plot_node)
-files.append(output_files)
-layout.single_layout(out_dir, output_files)
+files.append(sky_grid[0])
+# Pull segments plot
+seg_plot = '/GRB' + wflow.cp.get('workflow', 'trigger-name') + \
+           '_segments.png'
+copyfile(wflow.cp.get('workflow', 'segment-dir') + seg_plot, out_dir + seg_plot)
+seg_plot_file = _workflow.File(wflow.ifos, 'make_grb_segments_plot', wflow.analysis_time,
+                              file_url=out_dir + seg_plot)
+seg_plot_file.PFN(out_dir + seg_plot, 'local')
+files.append(seg_plot_file)
+# Set-up webpage
+summary_layout = [(summary_table[0],)] + list(layout.grouper(files, 2))
+layout.two_column_layout(out_dir, summary_layout)
 
 #
 # Plot SNR timeseries
