@@ -27,8 +27,10 @@ import argparse
 import pycbc.version
 import pycbc.results
 import lal
+import numpy
 from datetime import datetime
-from pycbc.results.pygrb_postprocessing_utils import get_antenna_response
+from pycbc.detector import Detector
+from pycbc.results.pygrb_postprocessing_utils import get_antenna_dist_factor
 
 __author__ = "Francesco Pannarale <francesco.pannarale@ligo.org>"
 __version__ = pycbc.version.git_verbose_msg
@@ -100,7 +102,8 @@ data[0].append(''.join(opts.ifos))
 headers.append('IFOs')
 
 for ifo in opts.ifos:
-    _, _, _, _, factor = get_antenna_response(opts.ra, opts.dec, opts.trigger_time, ifo, 'degrees')
+    antenna = Detector(ifo)
+    factor = get_antenna_dist_factor(antenna, float(opts.ra) / 180. * numpy.pi, float(opts.dec) / 180. * numpy.pi, float(opts.trigger_time))
     data[0].append('%.3f' % factor)
     headers.append(ifo + ' Antenna Factor')
 

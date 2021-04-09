@@ -126,6 +126,12 @@ def make_pygrb_plot(workflow, exec_name, out_dir, # exclude=None, require=None,
                                  '--background-output-file', tags=extra_tags+['max_background'])
         node.new_output_file_opt(workflow.analysis_time, '.png',
                                  '--onsource-output-file', tags=extra_tags+['onsource'])
+    elif exec_name == 'pygrb_plot_skygrid_and_segments':
+        node.add_opt('--gates-directory', workflow.cp.get('workflow', 'gates-directory'))
+        node.new_output_file_opt(workflow.analysis_time, '.png', '--segments-output-file',
+                                 tags=['segments']+extra_tags)
+        node.new_output_file_opt(workflow.analysis_time, '.png', '--skygrid-output-file',
+                                 tags=['skygrid']+extra_tags)    
     else:
         node.new_output_file_opt(workflow.analysis_time, '.png',
                                  '--output-file', tags=extra_tags)
@@ -394,17 +400,14 @@ files = _workflow.FileList([])
 html_node, summary_table = make_pygrb_info_table(wflow, out_dir)
 html_nodes.append(html_node)
 # Plot sky grid
-plot_node, sky_grid = make_pygrb_plot(wflow, 'pygrb_plot_skygrid', out_dir=out_dir)
+plot_node, output_files = make_pygrb_plot(wflow, 'pygrb_plot_skygrid_and_segments', out_dir=out_dir)
 plotting_nodes.append(plot_node)
-files.append(sky_grid[0])
-# Pull segments plot
-seg_plot = '/GRB' + wflow.cp.get('workflow', 'trigger-name') + \
-           '_segments.png'
-copyfile(wflow.cp.get('workflow', 'segment-dir') + seg_plot, out_dir + seg_plot)
-seg_plot_file = _workflow.File(wflow.ifos, 'make_grb_segments_plot', wflow.analysis_time,
-                              file_url=out_dir + seg_plot)
-seg_plot_file.PFN(out_dir + seg_plot, 'local')
-files.append(seg_plot_file)
+files.append(output_files[0])
+files.append(output_files[1])
+for ifo in ifos:
+    plot_node, output_files = make_pygrb_plot(wflow, 'pygrb_plot_skygrid_and_segments', out_dir=out_dir, ifo=ifo)
+    files.append(output_files[0])
+    files.append(output_files[1])
 # Set-up webpage
 summary_layout = [(summary_table[0],)] + list(layout.grouper(files, 2))
 layout.two_column_layout(out_dir, summary_layout)

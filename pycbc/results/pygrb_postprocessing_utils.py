@@ -31,26 +31,25 @@ import argparse
 import copy
 import numpy
 from scipy import stats
-import logging
 from pycbc.detector import Detector
 from pycbc.results import save_fig_with_metadata
 # TODO: imports to fix/remove
 try:
     from glue import segments
     from glue.ligolw import utils, lsctables, ligolw, table
+    from glue.segmentsUtils import fromsegwizard
 except ImportError:
     pass
 try:
+    #TODO: Look at pycbc/io/hdf.py
     from pylal import MultiInspiralUtils
-    from pylal.coh_PTF_pyutils import get_bestnr, get_det_response
-    from pylal.coh_PTF_pyutils import readSegFiles
-    from pylal.dq import dqSegmentUtils
+    from pylal.coh_PTF_pyutils import get_bestnr as pylal_get_bestnr
 except ImportError:
     pass
 # Only if a backend is not already set ... This should really *not* be done
 # here, but in the executables you should set matplotlib.use()
 # This matches the check that matplotlib does internally, but this *may* be
-# version dependenant. If this is a problem then remove this and control from
+# version dependent. If this is a problem then remove this and control from
 # the executables directly.
 import matplotlib
 if 'matplotlib.backends' not in sys.modules:  # nopep8
@@ -60,14 +59,154 @@ from matplotlib import pyplot as plt
 
 
 # =============================================================================
+# Function to calculate the antenna factors F+ and Fx
+# =============================================================================
+# TODO: the call, e.g., Detector("H1", reference_time=None) will not always
+# work because we are on Python 2.7 and therefore on an old version of astropy
+# which cannot download recent enough IERS tables. TEMPORARILY use the
+# default time (GW150914) as reference, thus approximating the sidereal time.
+def get_antenna_factors(antenna, ra, dec, geocent_time):
+    """Returns the antenna responses F+ and Fx of an IFO (passed as pycbc 
+    Detector type) at a given sky location and time."""
+
+    f_plus, f_cross = antenna.antenna_pattern(ra, dec, 0, geocent_time)
+
+    return f_plus, f_cross
+
+
+# =============================================================================
+# Function to calculate the antenna response F+^2 + Fx^2
+# =============================================================================
+def get_antenna_single_response(antenna, ra, dec, geocent_time):
+    """Returns the antenna response F+^2 + Fx^2 of an IFO (passed as pycbc 
+    Detector type) at a given sky location and time."""
+
+    fp, fc = get_antenna_factors(antenna, ra, dec, geocent_time)
+
+    return fp**2 + fc**2
+
+# Vectorize the function above on all but the first argument
+get_antenna_responses = numpy.vectorize(get_antenna_single_response,\
+                                    otypes=[float])
+get_antenna_responses.excluded.add(0)
+
+
+# =============================================================================
+# Function to calculate the effect of the antenna pattern on distance 
+# =============================================================================
+def get_antenna_dist_factor(antenna, ra, dec, geocent_time, inc=0.0):
+    """Returns the antenna factors (defined as eq. 4.3 on page 57 of 
+    Duncan Brown's Ph.D.) for an IFO (passed as pycbc Detector type) at 
+    a given sky location and time."""
+
+
+    fp, fc = get_antenna_factors(antenna, ra, dec, geocent_time)
+
+    return numpy.sqrt(fp ** 2 * (1 + numpy.cos(inc)) ** 2 / 4 + fc ** 2)
+
+
+# =============================================================================
+# Wrapper to avoid import pylal in executables: switch here from this pylal
+# function to PyCBC functions when ready.
+#
+# Function to calculate the detection statistic
+# =============================================================================
+def get_bestnr(trig, q=4.0, n=3.0, null_thresh=(4.25, 6), snr_threshold=6.,\
+               sngl_snr_threshold=4., chisq_threshold=None,\
+               null_grad_thresh=20., null_grad_val=0.2):
+    """Calculate the detection statistic of a trigger"""
+
+    bestNR = pylal_get_bestnr(trig, q=q, n=n, null_thresh=null_thresh,\
+                              snr_threshold=snr_threshold,\
+                              sngl_snr_threshold=sngl_snr_threshold,\
+                              chisq_threshold=chisq_threshold,\
+                              null_grad_thresh=null_grad_thresh,\
+                              null_grad_val=null_grad_val)
+
+    return bestNR
+
+
+#def get_bestnr( trig, q=4.0, n=3.0, null_thresh=(4.25,6), snr_threshold=6.,\
+#                sngl_snr_threshold=4., chisq_threshold = None,\
+#                null_grad_thresh=20., null_grad_val = 1./5.):
+#    """
+#    Calculate BestNR (coh_PTF detection statistic) through signal based vetoes:
+#    The signal based vetoes are as follows:
+#      * Coherent SNR < 6
+#      * Bank chi-squared reduced (new) SNR < 6
+#      * Auto veto reduced (new) SNR < 6
+#      * Single-detector SNR (from two most sensitive IFOs) < 4
+#      * Null SNR (CoincSNR^2 - CohSNR^2)^(1/2) < nullthresh
+#    Returns BestNR as float
+#    """
+#
+#    snr = trig.snr
+#    if not chisq_threshold:
+#        chisq_threshold = snr_threshold
+#
+#    # coherent SNR and null SNR cut
+#    if (snr < snr_threshold) \
+#         or (trig.get_new_snr(index=q, nhigh=n, column='bank_chisq')\
+#                          < chisq_threshold) \
+#         or (trig.get_new_snr(index=q, nhigh=n, column='cont_chisq')\
+#                          < chisq_threshold):
+#        return 0
+#
+#    # define IFOs for sngl cut
+#    ifos = map(str,trig.get_ifos())
+#
+#    # single detector SNR cut
+#    sens = {}
+#    fPlus, fCross = get_det_response(numpy.degrees(trig.ra),\
+#                                     numpy.degrees(trig.dec),\
+#                                     trig.get_end())
+#    for ifo in ifos:
+#        if ifo.lower()[0] == 'h':
+#            i = ifo.lower()
+#        else:
+#            i = ifo[0].lower()
+##        sens[ifo] = getattr(trig, 'sigmasq_%s' % i.lower()) * \
+##                        sum(numpy.array([fPlus[ifo], fCross[ifo]])**2)
+#        sens[ifo] = getattr(trig, 'sigmasq_%s' % i.lower()) * \
+#                        get_antenna_single_response(ifo, self.ra[i],
+#                                                    self.dec[i], self.time[i])
+#    ifos.sort(key=lambda ifo: sens[ifo], reverse=True)
+#    if len(ifos) > 1:
+#        for i in xrange(0, 2):
+#            if ifos[i].lower()[0] == 'h':
+#                i = ifos[i].lower()
+#            else:
+#                i = ifos[i][0].lower()
+#            if getattr(trig, 'snr_%s' % i) < sngl_snr_threshold:
+#                return 0
+#
+#    # get chisq reduced (new) SNR
+#    bestNR = trig.get_bestnr(index=q, nhigh=n, \
+#             null_snr_threshold=null_thresh[0], \
+#             null_grad_thresh=null_grad_thresh, null_grad_val=null_grad_val)
+#
+#    # If we got this far, the bestNR is non-zero. Verify that chisq actually
+#    # was calculated for the trigger
+#    if trig.chisq == 0:
+#        # Some stuff for debugging
+#        print >> sys.stderr,\
+#            "Chisq not calculated for trigger with end time and snr:"
+#        print >> sys.stderr,  trig.get_end(),trig.snr
+#        raise ValueError("Chisq has not been calculated for trigger.")
+#
+#    return bestNR
+
+
+# =============================================================================
 # Parse command line
 # =============================================================================
-
 # TODO: regroup options that are now all in this unique parser
 def pygrb_plot_opts_parser(usage='', description=None, version=None):
     """Parses options for PyGRB post-processing scripts"""
+
     parser = argparse.ArgumentParser(usage=usage, description=description,
-                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+                                     formatter_class=\
+                                     argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("--version", action="version", version=version)
 
@@ -134,6 +273,9 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     parser.add_argument("-l", "--veto-directory", action="store", default=None,
                         help="The location of the CATX veto files")
 
+    parser.add_argument("--gates-directory", action="store", default=None,
+                        help="The location of the Gating files")
+
     parser.add_argument("-b", "--veto-category", action="store", type=int,
                         default=None, help="Apply vetoes up to this level " +
                         "inclusive")
@@ -171,7 +313,7 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
 
     parser.add_argument("--loudest-offsource-trigs-h5-output-file", default=None, #required=True,
                         help="Loudest offsource triggers h5 output file.")
- 
+
     parser.add_argument("--loudest-onsource-trig-output-file", default=None, #required=True,
                         help="Loudest onsource trigger html output file.")
 
@@ -183,7 +325,7 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         "offsouce triggers to output details about.")
 
 
-    # This is originally for SNR and chi-square veto plots 
+    # This is originally for SNR and chi-square veto plots
     parser.add_argument("-y", "--y-variable", default=None, help="Quantity " +
                         "to plot on the vertical axis. Supported choices " +
                         "are: coherent, single, reweighted, or null (for " +
@@ -196,8 +338,8 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
 
     parser.add_argument('--plot-caption', default=None,
                         help="If given, use this as the plot caption")
-    
-    # This is originally for SNR timeseries plots 
+
+    # This is originally for SNR timeseries plots
     parser.add_argument('--central-time', type=float, default=None,
                         help="Center plot on the given GPS time. If omitted, "+
                         "use the GRB trigger time")
@@ -218,7 +360,7 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         default=None,
                         help="Location of the found injections file")
 
-    parser.add_argument("-m", "--missed-file",action="store",
+    parser.add_argument("-m", "--missed-file", action="store",
                         default=None,
                         help="Location of the missed injections file")
 
@@ -229,8 +371,8 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         help="Exclusion distance output file.")
 
     # FIXME: eventually remove below argument and require output-file
-    # be specified. 
-    parser.add_argument("--output-path", default=os.getcwd(), 
+    # be specified.
+    parser.add_argument("--output-path", default=os.getcwd(),
                         help="Output path for plots")
 
     parser.add_argument("-s", "--segment-length", action="store", type=float,
@@ -241,25 +383,25 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
                         help="The length of padding around analysis chunk.")
 
     parser.add_argument("-g", "--glitch-check-factor", action="store",
-                        type=float,default=1.0, help="When deciding " +
+                        type=float, default=1.0, help="When deciding " +
                         "exclusion efficiencies this value is multiplied " +
                         "to the offsource around the injection trigger to " +
                         "determine if it is just a loud glitch.")
 
     parser.add_argument("-C", "--cluster-window", action="store", type=float,
-                        default=0.1,help="The cluster window used " +
+                        default=0.1, help="The cluster window used " +
                         "to cluster triggers in time.")
 
     parser.add_argument("-U", "--upper-inj-dist", action="store",
-                        type=float,default=1000,help="The upper distance " +
+                        type=float, default=1000, help="The upper distance " +
                         "of the injections in Mpc, if used.")
 
     parser.add_argument("-L", "--lower-inj-dist", action="store",
-                        type=float,default=0,help="The lower distance of " +
+                        type=float, default=0, help="The lower distance of " +
                         "the injections in Mpc, if used.")
 
     parser.add_argument("-n", "--num-bins", action="store", type=int,
-                        default=0,help="The number of bins used to " +
+                        default=0, help="The number of bins used to " +
                         "calculate injection efficiency.")
 
     parser.add_argument("-M", "--num-mc-injections", action="store",
@@ -311,9 +453,15 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
     # pygrb_efficiency only options end here
 
     # pycbc_pygrb_slice_inj_followup uses this
-    parser.add_argument("--followup-inj-idx", action="store", type=int, 
-                        default=None, help="Index of missed/quiet injeciton " + 
+    parser.add_argument("--followup-inj-idx", action="store", type=int,
+                        default=None, help="Index of missed/quiet injeciton " +
                         "to followup.")
+
+    parser.add_argument("--skygrid-output-file", default=None, #required=True,
+                        help="Skygrid plot output file.")
+    
+    parser.add_argument("--segments-output-file", default=None, #required=True,
+                        help="Segments plot output file.")
 
     args = parser.parse_args()
     if not (args.trig_file or args.offsource_file):
@@ -328,6 +476,7 @@ def pygrb_plot_opts_parser(usage='', description=None, version=None):
 
 def format_single_chisqs(trig_ifo_cs, ifos):
     """Format single IFO chi-square data as numpy array and floor at 0.005"""
+
     for ifo in ifos:
         trig_ifo_cs[ifo] = numpy.asarray(trig_ifo_cs[ifo])
         numpy.putmask(trig_ifo_cs[ifo], trig_ifo_cs[ifo] == 0, 0.005)
@@ -340,18 +489,28 @@ def format_single_chisqs(trig_ifo_cs, ifos):
 # =============================================================================
 
 def read_seg_files(seg_dir):
-    """Given the segments directroy, read segments files"""
-    segs = readSegFiles(seg_dir)
+    """Given the segments directory, read segments files"""
 
-    return segs 
+    times = {}
+    keys = ["buffer", "off", "on"]
+    file_names = ["bufferSeg.txt", "offSourceSeg.txt", "onSourceSeg.txt"]
+
+    for key, file_name in zip(keys, file_names):
+        segs = fromsegwizard(open(os.path.join(seg_dir, file_name), 'r'))
+        if len(segs) > 1:
+            logging.error('More than one segment, an error has occured.')
+            sys.exit()
+        times[key] = segs[0]
+
+    return times
 
 
 # =============================================================================
 # Find GRB trigger time
 # =============================================================================
-
 def get_grb_time(seg_dir):
     """Determine GRB trigger time"""
+
     segs = read_seg_files(seg_dir)
     grb_time = segs['on'][1] - 1
 
@@ -363,6 +522,7 @@ def get_grb_time(seg_dir):
 # =============================================================================
 def get_start_end_times(data, central_time):
     """Determine start and end times of data relative to central_time"""
+
     start = int(min(data.time)) - central_time
     end = int(max(data.time)) - central_time
     duration = end-start
@@ -375,9 +535,9 @@ def get_start_end_times(data, central_time):
 # =============================================================================
 # Reset times so that t=0 is corresponds to the given trigger time
 # =============================================================================
-
 def reset_times(data, trig_time):
     """Reset times in data so that t=0 corresponds to the trigger time provided"""
+
     data.time = [t-trig_time for t in data.time]
 
     return data
@@ -385,9 +545,9 @@ def reset_times(data, trig_time):
 # =============================================================================
 # Extract trigger/injection data produced by PyGRB
 # =============================================================================
-
 class PygrbFilterOutput(object):
     """Extract trigger/injection data produced by PyGRB search"""
+
     def __init__(self, trigs_or_injs, ifos, columns, output_type, opts):
         logging.info("Extracting data from the %s just loaded...", output_type)
         # Initialize all content of self
@@ -449,6 +609,9 @@ class PygrbFilterOutput(object):
             numpy.putmask(self.chi_square, self.chi_square == 0, 0.005)
             numpy.putmask(self.bank_veto, self.bank_veto == 0, 0.005)
             numpy.putmask(self.auto_veto, self.auto_veto == 0, 0.005)
+            self.chisq_dof = numpy.unique(trigs_or_injs.get_column('chisq_dof'))
+            self.bank_chisq_dof = numpy.unique(trigs_or_injs.get_column('bank_chisq_dof'))
+            self.cont_chisq_dof = numpy.unique(trigs_or_injs.get_column('cont_chisq_dof'))
 
             # Get single detector data
             self.coinc_snr = (trigs_or_injs.get_column('coinc_snr'))
@@ -499,32 +662,27 @@ class PygrbFilterOutput(object):
                 logging.info("%d %s found.", num_trigs_or_injs, output_type)
             # Deal with the sigma-squares (historically called sigmas here)
             if output_type == "triggers":
+                # Get antenna response based parameters
+                self.ra = trigs_or_injs.get_column('ra')
+                self.longitude = numpy.degrees(self.ra)
+                self.dec = trigs_or_injs.get_column('dec')
+                self.latitude = numpy.degrees(self.dec)
+                self.f_resp = {}
                 sigma = trigs_or_injs.get_sigmasqs()
                 self.sigma_tot = numpy.zeros(num_trigs_or_injs)
-                # Get antenna response based parameters
-                self.longitude = numpy.degrees(trigs_or_injs.get_column('ra'))
-                self.latitude = numpy.degrees(trigs_or_injs.get_column('dec'))
-                self.f_resp = dict((ifo, numpy.empty(num_trigs_or_injs))
-                                   for ifo in ifos)
-                for i in range(num_trigs_or_injs):
-                    # Calculate f_resp for each IFO if we haven't done so yet
-                    f_plus, f_cross = get_det_response(self.longitude[i],
-                                                       self.latitude[i],
-                                                       self.time[i])
-                    for ifo in ifos:
-                        self.f_resp[ifo][i] = sum(numpy.array([f_plus[ifo],
-                                                               f_cross[ifo]]
-                                                              )**2)
-                        self.sigma_tot[i] += (sigma[ifo][i] *
-                                              self.f_resp[ifo][i])
-
                 for ifo in ifos:
+                    antenna = Detector(ifo)
+                    self.f_resp[ifo] = get_antenna_responses(antenna,
+                                                             self.ra,
+                                                             self.dec,
+                                                             self.time)
+                    self.sigma_tot += (sigma[ifo] * self.f_resp[ifo])
+                    # After the detailed calculations, this only stores the mean responses
                     self.f_resp[ifo] = self.f_resp[ifo].mean()
 
                 # Normalise trig_sigma
-                self.sigma_tot = numpy.array(self.sigma_tot)
                 for ifo in ifos:
-                    sigma[ifo] = numpy.asarray(sigma[ifo]) / self.sigma_tot
+                    sigma[ifo] /= self.sigma_tot
 
                 self.sigma_mean = {}
                 self.sigma_max = {}
@@ -544,11 +702,10 @@ class PygrbFilterOutput(object):
 # =============================================================================
 # Function to open trigger and injection xml files
 # =============================================================================
-
-def load_xml_file(filename):
+def load_xml_file(file_name):
     """Wrapper to ligolw's utils.load_filename"""
 
-    xml_doc = utils.load_filename(filename, gz=filename.endswith("gz"),
+    xml_doc = utils.load_filename(file_name, gz=file_name.endswith("gz"),
                                   contenthandler=lsctables.use_in(
                                       ligolw.LIGOLWContentHandler))
 
@@ -558,19 +715,17 @@ def load_xml_file(filename):
 # =============================================================================
 # Function to load a table from an xml file
 # =============================================================================
-
-def load_xml_table(filename, table_name):
+def load_xml_table(file_name, table_name):
     """Load xml table from file."""
 
-    xmldoc = load_xml_file(filename)
+    xml_doc = load_xml_file(file_name)
 
-    return table.get_table(xmldoc, table_name)
+    return table.get_table(xml_doc, table_name)
 
 
 # =============================================================================
 # Function to extract ifos
 # =============================================================================
-
 def extract_ifos(trig_file):
     """Extracts IFOs from search summary table"""
 
@@ -584,10 +739,65 @@ def extract_ifos(trig_file):
     return ifos
 
 
+# ==============================================================================
+# Function to load segments from an xml file
+# ==============================================================================
+def load_segments_from_xml(xml_doc, return_dict=False, select_id=None):
+    """Read a glue.segments.segmentlist from the file object file containing an
+    xml segment table.
+
+    Parameters
+    ----------
+        xml_doc: name of segment xml file
+
+        Keyword Arguments:
+            return_dict : [ True | False ]
+                return a glue.segments.segmentlistdict containing coalesced
+                glue.segments.segmentlists keyed by seg_def.name for each entry
+                in the contained segment_def_table. Default False
+            select_id : int
+                return a glue.segments.segmentlist object containing only
+                those segments matching the given segment_def_id integer
+
+    """
+
+    # Load SegmentDefTable and SegmentTable
+    seg_def_table = load_xml_table(xml_doc, lsctables.SegmentDefTable.tableName)
+    seg_table = load_xml_table(xml_doc, lsctables.SegmentTable.tableName)
+
+    if return_dict:
+        segs = segments.segmentlistdict()
+    else:
+        segs = segments.segmentlist()
+
+    seg_id = {}
+    for seg_def in seg_def_table:
+        seg_id[int(seg_def.segment_def_id)] = str(seg_def.name)
+        if return_dict:
+            segs[str(seg_def.name)] = segments.segmentlist()
+
+    for seg in seg_table:
+        if return_dict:
+            segs[seg_id[int(seg.segment_def_id)]]\
+                .append(segments.segment(seg.start_time, seg.end_time))
+            continue
+        if select_id and int(seg.segment_def_id) == select_id:
+            segs.append(segments.segment(seg.start_time, seg.end_time))
+            continue
+        segs.append(segments.segment(seg.start_time, seg.end_time))
+
+    if return_dict:
+        for seg_name in seg_id.values():
+            segs[seg_name] = segs[seg_name].coalesce()
+    else:
+        segs = segs.coalesce()
+
+    return segs
+
+
 # =============================================================================
 # Function to extract vetoes
 # =============================================================================
-
 def extract_vetoes(veto_files, ifos):
     """Extracts vetoes from veto filelist"""
 
@@ -598,11 +808,11 @@ def extract_vetoes(veto_files, ifos):
 
     # Construct veto list from veto filelist
     if veto_files:
-        for file in veto_files:
-            ifo = os.path.basename(file)[:2]
+        for veto_file in veto_files:
+            ifo = os.path.basename(veto_file)[:2]
             if ifo in ifos:
                 # This returns a coalesced list of the vetoes
-                tmp_veto_segs = dqSegmentUtils.fromsegmentxml(open(file, 'r'))
+                tmp_veto_segs = load_segments_from_xml(veto_file)
                 for entry in tmp_veto_segs:
                     vetoes[ifo].append(entry)
     for ifo in ifos:
@@ -614,17 +824,18 @@ def extract_vetoes(veto_files, ifos):
 # =============================================================================
 # Function to extract IFOs and vetoes
 # =============================================================================
-
 def extract_ifos_and_vetoes(trig_file, veto_dir, veto_cat):
     """Extracts IFOs from search summary table and vetoes from a directory"""
 
-    # Extract IFOs 
+    logging.info("Extracting IFOs and vetoes.")
+
+    # Extract IFOs
     ifos = extract_ifos(trig_file)
 
     # Extract vetoes
     veto_files = []
     if veto_dir:
-        veto_string = ','.join([str(i) for i in range(2,veto_cat+1)])
+        veto_string = ','.join([str(i) for i in range(2, veto_cat+1)])
         veto_files = glob.glob(veto_dir +'/*CAT[%s]*.xml' %(veto_string))
     vetoes = extract_vetoes(veto_files, ifos)
 
@@ -634,10 +845,13 @@ def extract_ifos_and_vetoes(trig_file, veto_dir, veto_cat):
 # =============================================================================
 # Function to load triggers
 # =============================================================================
-
-def load_triggers(trig_file, vetoes, ifos):
+def load_triggers(trig_file, vetoes):
     """Loads triggers from PyGRB output file"""
+
     logging.info("Loading triggers...")
+
+    # Determine ifos
+    ifos = vetoes.keys()
 
     # Extract time-slides
     multis, slide_dict, _ = \
@@ -668,22 +882,43 @@ def load_triggers(trig_file, vetoes, ifos):
 
 
 # =============================================================================
+# Function to load data contained in a trigger file
+# =============================================================================
+def load_triggers_data(trig_file, vetoes, opts):
+    """Loads data from triggers in a PyGRB output file"""
+
+    # Load triggers
+    trigs = load_triggers(trig_file, vetoes)
+
+    # Determine ifos
+    ifos = vetoes.keys()
+
+    # Extract trigger data
+    trig_data = PygrbFilterOutput(trigs, ifos,
+                                  lsctables.MultiInspiralTable.loadcolumns,
+                                  "triggers", opts)
+
+    return trig_data
+
+
+# =============================================================================
 # Function to load injections
 # =============================================================================
-
-def load_injections(inj_file, vetoes):
+def load_injections(inj_file, vetoes, sim_table=False):
     """Loads injections from PyGRB output file"""
+
     logging.info("Loading injections...")
 
-    # Load injection file
-    multis = load_xml_table(inj_file, lsctables.MultiInspiralTable.tableName)
+    insp_table = lsctables.MultiInspiralTable
+    if sim_table:
+        insp_table = lsctables.SimInspiralTable
 
-    # Extract injections
-    injs = lsctables.New(lsctables.MultiInspiralTable,
-                         columns=lsctables.MultiInspiralTable.loadcolumns)
+    # Load injections in injection file
+    table = load_xml_table(inj_file, insp_table.tableName)
 
-    # Injections in time-slid non-vetoed data
-    injs.extend(t for t in multis if t.get_end() not in vetoes)
+    # Extract injections in time-slid non-vetoed data
+    injs = lsctables.New(insp_table, columns=insp_table.loadcolumns)
+    injs.extend(t for t in table if t.get_end() not in vetoes)
 
     logging.info("%d injections found.", len(injs))
 
@@ -691,9 +926,30 @@ def load_injections(inj_file, vetoes):
 
 
 # =============================================================================
-# Function to calculate chi-square weight for the reweighted SNR 
+# Function to load data contained in an injection file
 # =============================================================================
+def load_injections_data(inj_file, vetoes, opts, sim_table=False):
+    """Loads data contained in an injection file at non-vetoed times"""
 
+    # Load injections
+    injs = None
+    if inj_file:
+        injs = load_injections(inj_file, vetoes, sim_table)
+
+    # Determine ifos
+    ifos = vetoes.keys()
+
+    # Extract (or initialize) injection data
+    inj_data = PygrbFilterOutput(injs, ifos,
+                                 lsctables.MultiInspiralTable.loadcolumns,
+                                 "injections", opts)
+
+    return inj_data
+
+
+# =============================================================================
+# Function to calculate chi-square weight for the reweighted SNR
+# =============================================================================
 def new_snr_chisq(snr, new_snr, chisq_dof, chisq_index=4.0, chisq_nhigh=3.0):
     """Returns the chi-square value needed to weight SNR into new SNR"""
 
@@ -705,58 +961,19 @@ def new_snr_chisq(snr, new_snr, chisq_dof, chisq_index=4.0, chisq_nhigh=3.0):
 
 
 # =============================================================================
-# Function to calculate the antenna response 
-# =============================================================================
-# TODO: use this to replace pylal.coh_PTF_pyutils.get_f_resp everywhere
-
-def get_antenna_response(ra, dec, geocent_time, ifo, unit, 
-                         inc=0.0, polarization=0.0):
-    """Returns the antenna responses for an IFO at a given sky"""
-    """location and time."""
-
-    if unit == 'degrees':
-        ra_radians = float(ra) / 180.0 * numpy.pi
-        dec_radians = float(dec) / 180.0 * numpy.pi
-        inc_radians = float(inc) / 180.0 * numpy.pi
-    elif unit == 'radians':
-        ra_radians = ra
-        dec_radians = dec
-        inc_radians = inc
-    else:
-        logging.error('Unknown units')
-        return None
-        
-    fp, fc = Detector(ifo).antenna_pattern(ra_radians, dec_radians, 
-                                           polarization, t_gps=float(geocent_time))
-
-    # Sum of squares of the polarizations
-    f_ss = fp ** 2 + fc ** 2
-
-    # Weighted average of the polarizations
-    f_average = numpy.sqrt((fp ** 2 + fc ** 2) / 2)
-
-    # Effective distance / real distance
-    # From Duncan Browns Ph.D. eq. 4.3 on page 57
-    f_eff = numpy.sqrt(fp ** 2 * (1 + numpy.cos(inc_radians)) ** 2 / 4 + fc ** 2)
-    
-    return fp, fc, f_ss, f_average, f_eff
-
-
-# =============================================================================
 # Function to get the ID numbers from a LIGO-LW table
 # =============================================================================
-
 def get_id_numbers(ligolw_table, column):
     """Grab the IDs of a LIGO-LW table"""
 
     ids = [int(getattr(row, column)) for row in ligolw_table]
+
     return ids
 
 
 # =============================================================================
 # Function to load timeslides
 # =============================================================================
-
 def load_time_slides(xml_file):
     """Loads timeslides from PyGRB output file"""
 
@@ -764,22 +981,22 @@ def load_time_slides(xml_file):
     time_slide_unsorted = [dict(i) for i in time_slide.as_dict().values()]
     # NB: sorting not necessary if using python 3
     sort_idx = numpy.argsort(numpy.array([
-            int(time_slide.get_time_slide_id(ov)) for ov in time_slide_unsorted
+        int(time_slide.get_time_slide_id(ov)) for ov in time_slide_unsorted
     ]))
     time_slide_list = numpy.array(time_slide_unsorted)[sort_idx]
-    # Check time_slide_ids are ordered correctly. 
+    # Check time_slide_ids are ordered correctly.
     ids = get_id_numbers(time_slide, "time_slide_id")[::len(time_slide_list[0].keys())]
-    if not (numpy.all(ids[1:] == numpy.array(ids[:-1])+1) and ids[0]==0):
+    if not (numpy.all(ids[1:] == numpy.array(ids[:-1])+1) and ids[0] == 0):
         err_msg = "time_slide_ids list should start at zero and increase by "
         err_msg += "one for every element"
-        logging.err(err_msg)
+        logging.error(err_msg)
         sys.exit()
     # Check that the zero-lag slide has time_slide_id == 0.
     if not numpy.all(numpy.array(list(time_slide_list[0].values())) == 0):
         err_msg = "The zero-lag slide should have time_slide_id == 0 "
         err_msg += "but the first element of time_slide_list is "
         err_msg += "%s \n" % time_slide_list[0]
-        logging.err(err_msg)
+        logging.error(err_msg)
         sys.exit()
 
     return time_slide_list
@@ -788,7 +1005,6 @@ def load_time_slides(xml_file):
 # =============================================================================
 # Function to determine the id of the zero-lag timeslide
 # =============================================================================
-
 def find_zero_lag_slide_id(slide_dict):
     """Loads timeslides from PyGRB output file"""
 
@@ -804,11 +1020,13 @@ def find_zero_lag_slide_id(slide_dict):
                     err_msg = 'zero_lag_slide_id was already assigned: there'
                     err_msg += 'seems to be more than one zero-lag slide!'
                     logging.error(err_msg)
-    
+                    sys.exit()
+
     if zero_lag_slide_id is None:
         err_msg = 'Unable to assign zero_lag_slide_id: '
         err_msg += 'there seems to be no zero-lag slide!'
         logging.error(err_msg)
+        sys.exit()
 
     return zero_lag_slide_id
 
@@ -817,7 +1035,6 @@ def find_zero_lag_slide_id(slide_dict):
 # Function to calculate the error bars and fraction of recovered injections
 # (used for efficiency/distance plots)
 # =============================================================================
-
 def efficiency_with_errs(found_bestnr, num_injections, num_mc_injs=0):
     """Calculates the fraction of recovered injections and its error bars"""
 
@@ -825,6 +1042,7 @@ def efficiency_with_errs(found_bestnr, num_injections, num_mc_injs=0):
         err_msg = "The parameter num_mc_injs is the number of Monte-Carlo "
         err_msg += "injections.  It must be an integer."
         logging.error(err_msg)
+        sys.exit()
 
     only_found_injs = found_bestnr[:-1]
     all_injs = num_injections[:-1]
@@ -852,27 +1070,25 @@ def efficiency_with_errs(found_bestnr, num_injections, num_mc_injs=0):
 # =============================================================================
 # Function to load the segment dicitonary
 # =============================================================================
-
 def load_segment_dict(xml_file):
     """Loads the segment dictionary """
 
     # Get the mapping table
-    # TODO: unclear whether this step is necessary (seems the 
+    # TODO: unclear whether this step is necessary (seems the
     # segment_def_id and time_slide_id are always identical)
     time_slide_map_table = load_xml_table(xml_file, lsctables.TimeSlideSegmentMapTable.tableName)
     segment_map = {
-            int(entry.segment_def_id): int(entry.time_slide_id) 
-            for entry in time_slide_map_table
+        int(entry.segment_def_id): int(entry.time_slide_id)
+        for entry in time_slide_map_table
     }
     # Extract the segment table
     segment_table = load_xml_table(
-        xml_file,lsctables.SegmentTable.tableName
+        xml_file, lsctables.SegmentTable.tableName
         )
     segmentDict = {}
     for entry in segment_table:
         currSlidId = segment_map[int(entry.segment_def_id)]
         currSeg = entry.get()
-#     print(abs(currSeg), currSlidId, ts[currSlidId])
         if not currSlidId in segmentDict.keys():
             segmentDict[currSlidId] = segments.segmentlist()
         segmentDict[currSlidId].append(currSeg)
@@ -882,9 +1098,8 @@ def load_segment_dict(xml_file):
 
 
 # =============================================================================
-# Construct the trials from the timeslides, segments, and vetoes 
+# Construct the trials from the timeslides, segments, and vetoes
 # =============================================================================
-
 def construct_trials(num_slides, segs, segment_dict, ifos, slide_dict, vetoes):
     """Constructs trials from triggers, timeslides, segments and vetoes"""
 
@@ -896,7 +1111,7 @@ def construct_trials(num_slides, segs, segment_dict, ifos, slide_dict, vetoes):
     for slide_id in range(num_slides):
         # These can only *reduce* the analysis time
         curr_seg_list = segment_dict[slide_id]
-    
+
         # Construct the buffer segment list
         seg_buffer = segments.segmentlist()
         for ifo in ifos:
@@ -904,12 +1119,12 @@ def construct_trials(num_slides, segs, segment_dict, ifos, slide_dict, vetoes):
             seg_buffer.append(segments.segment(segs['buffer'][0] - slide_offset,\
                                                segs['buffer'][1] - slide_offset))
         seg_buffer.coalesce()
-    
+
         # Construct the ifo list
         slid_vetoes = copy.deepcopy(vetoes)
         for ifo in ifos:
             slid_vetoes[ifo].shift(-slide_dict[slide_id][ifo])
-    
+
         # Construct trial list and check against buffer
         trial_dict[slide_id] = segments.segmentlist()
         for curr_seg in curr_seg_list:
@@ -926,14 +1141,13 @@ def construct_trials(num_slides, segs, segment_dict, ifos, slide_dict, vetoes):
                     else:
                         trial_dict[slide_id].append(curr_trial)
                 iter_int += 1
-    
+
     return trial_dict
 
 
 # =============================================================================
 # Construct the sorted triggers from the trials
 # =============================================================================
-
 def sort_trigs(trial_dict, trigs, num_slides, segment_dict):
     """Constructs sorted triggers"""
 
@@ -950,8 +1164,8 @@ def sort_trigs(trial_dict, trigs, num_slides, segment_dict):
     for slide_id in range(num_slides):
         # These can only *reduce* the analysis time
         curr_seg_list = segment_dict[slide_id]
-    
-        ###### TODO:below is a check we can possibly remove #####
+
+        ###### TODO: below is a check we can possibly remove #####
         # Check the triggers are all in the analysed segment lists
         for trig in sorted_trigs[slide_id]:
             if trig.end_time not in curr_seg_list:
@@ -966,18 +1180,17 @@ def sort_trigs(trial_dict, trigs, num_slides, segment_dict):
                 logging.error(err_msg)
                 sys.exit()
         ###### end of check #####
-    
+
         # The below line works like the inverse of .veto and only returns trigs
         # that are within the segment specified by trial_dict[slide_id]
         sorted_trigs[slide_id] = sorted_trigs[slide_id].vetoed(trial_dict[slide_id])
-    
+
     return sorted_trigs
 
 
 # =============================================================================
 # Find max and median of loudest SNRs or BestNRs
 # =============================================================================
-
 def sort_stat(time_veto_max_stat):
     """Sort a dictionary of loudest SNRs/BestNRs"""
 
@@ -990,13 +1203,12 @@ def sort_stat(time_veto_max_stat):
 # =============================================================================
 # Find max and median of loudest SNRs or BestNRs
 # =============================================================================
-
 def max_median_stat(num_slides, time_veto_max_stat, trig_stat, total_trials):
     """Deterime the maximum and median of the loudest SNRs/BestNRs"""
 
     max_stat = max([trig_stat[slide_id].max() if trig_stat[slide_id].size \
                    else 0 for slide_id in range(num_slides)])
-    
+
     full_time_veto_max_stat = sort_stat(time_veto_max_stat)
 
     if total_trials % 2:
@@ -1005,13 +1217,12 @@ def max_median_stat(num_slides, time_veto_max_stat, trig_stat, total_trials):
         median_stat = numpy.mean((full_time_veto_max_stat)\
                               [total_trials//2 - 1 : total_trials//2 + 1])
 
-    return max_stat, median_stat, full_time_veto_max_stat 
+    return max_stat, median_stat, full_time_veto_max_stat
 
 
 # =============================================================================
 # Given the trigger and injection values of a quantity, determine the maximum
 # =============================================================================
-
 def axis_max_value(trig_values, inj_values, inj_file):
     """Deterime the maximum of a quantity in the trigger and injection data"""
 
@@ -1025,8 +1236,7 @@ def axis_max_value(trig_values, inj_values, inj_file):
 # =============================================================================
 # Calculate all chi-square contours for diagnostic plots
 # =============================================================================
-
-def calculate_contours(trigs, opts, new_snrs=None):
+def calculate_contours(trig_data, opts, new_snrs=None):
     """Generate the plot contours for chisq variable plots"""
 
     if new_snrs is None:
@@ -1040,9 +1250,9 @@ def calculate_contours(trigs, opts, new_snrs=None):
     null_thresh = null_thresh[-1]
     null_grad_snr = opts.null_grad_thresh
     null_grad_val = opts.null_grad_val
-    chisq_dof = trigs[0].chisq_dof
-    bank_chisq_dof = trigs[0].bank_chisq_dof
-    cont_chisq_dof = trigs[0].cont_chisq_dof
+    chisq_dof = trig_data.chisq_dof[0]
+    bank_chisq_dof = trig_data.bank_chisq_dof[0]
+    cont_chisq_dof = trig_data.cont_chisq_dof[0]
 
     # Add the new SNR threshold contour to the list if necessary
     # and keep track of where it is
@@ -1095,9 +1305,9 @@ def calculate_contours(trigs, opts, new_snrs=None):
 # =============================================================================
 # Plot contours in a scatter plot where SNR is on the horizontal axis
 # =============================================================================
-
 def contour_plotter(axis, snr_vals, contours, colors, vert_spike=False):
     """Plot contours in a scatter plot where SNR is on the horizontal axis"""
+
     for i, _ in enumerate(contours):
         plot_vals_x = []
         plot_vals_y = []
@@ -1119,20 +1329,18 @@ def contour_plotter(axis, snr_vals, contours, colors, vert_spike=False):
 # =============================================================================
 # Contains plotting setups shared by PyGRB plots
 # =============================================================================
-
 def pygrb_shared_plot_setups():
     """Master function to plot PyGRB results"""
 
     # Get rcParams
     rc('font', size=14)
     # Set color for out-of-range values
-    plt.cm.spring.set_over('g')
+    #plt.cm.spring.set_over('g')
 
 
 # =============================================================================
 # Master plotting function: fits all plotting needs in for PyGRB results
 # =============================================================================
-
 def pygrb_plotter(trig_x, trig_y, inj_x, inj_y, inj_file, xlabel, ylabel,
                   fig_path, snr_vals=None, conts=None,
                   shade_cont_value=None, colors=None, vert_spike=False,
@@ -1187,7 +1395,7 @@ def pygrb_plotter(trig_x, trig_y, inj_x, inj_y, inj_file, xlabel, ylabel,
 # =============================================================================
 # Incorporate calibration and waveform errors for efficiency plots
 # =============================================================================
-
+# Used by pycbc_pygrb_page_tables
 def mc_cal_wf_errs(num_mc_injs, num_injs, inj_dists, cal_err, wf_err, max_dc_cal_err):
     """Includes calibration and waveform errors by running an MC"""
 
@@ -1206,120 +1414,6 @@ def mc_cal_wf_errs(num_mc_injs, num_injs, inj_dists, cal_err, wf_err, max_dc_cal
                                      (1 + cal_dist_red) * (1 + wf_dist_red))
 
     return inj_dist_mc
-
-
-
-# =============================================================================
-# Process the trigger table for q-scan follow-ups
-# =============================================================================
-
-def process_trigs_for_followup(trig_file, seg_dir, veto_dir, veto_cat, 
-                               chisq_index, chisq_nhigh, null_thresh, 
-                               snr_thresh, sngl_snr_thresh, new_snr_thresh,
-                               null_grad_thresh, null_grad_val,
-                               num_followup_trigs=10, do_injections=False):
-    # The basis for this code is in multiple places, but it is 
-    # specifically added here so that we can use it for q-scan
-    # follow-ups of missed injections and loudest offsource
-    # events. 
-
-    ifos, vetoes = extract_ifos_and_vetoes(trig_file, veto_dir, int(veto_cat))
-    
-    # Load triggers, time-slides, and segment dictionary
-    trigs = load_xml_table(trig_file, lsctables.MultiInspiralTable.tableName)
-    slide_dict = load_time_slides(trig_file)
-    segment_dict = load_segment_dict(trig_file)
-
-    # Identify the zero-lag slide and the number of slides
-    zero_lag_slide_id = find_zero_lag_slide_id(slide_dict)
-    num_slides = len(slide_dict)
-
-    # Get segments
-    segs = read_seg_files(seg_dir)
-
-    # Construct trials
-    trial_dict = construct_trials(num_slides, segs, segment_dict, ifos, 
-                                  slide_dict, vetoes)
-    # Sort the triggers into each slide
-    sorted_trigs = sort_trigs(trial_dict, trigs, num_slides, segment_dict)
-    total_trials = sum([len(trial_dict[slide_id]) 
-                        for slide_id in range(num_slides)])
-
-    # Extract basic trigger properties and store as dictionaries
-    trig_time = {}
-    trig_snr = {}
-    trig_bestnr = {}
-    for slide_id in range(num_slides):
-        slide_trigs = sorted_trigs[slide_id]
-        trig_time[slide_id] = numpy.asarray(slide_trigs.get_end()).astype(float)
-        trig_snr[slide_id] = numpy.asarray(slide_trigs.get_column('snr'))
-        trig_bestnr[slide_id] = [get_bestnr(t, q=float(chisq_index), 
-                                            n=float(chisq_nhigh),
-                                            null_thresh=null_thresh,
-                                            snr_threshold=float(snr_thresh),
-                                            sngl_snr_threshold=float(sngl_snr_thresh),
-                                            chisq_threshold=float(new_snr_thresh),
-                                            null_grad_thresh=float(null_grad_thresh),
-                                            null_grad_val=float(null_grad_val))
-                                 for t in slide_trigs]
-        trig_bestnr[slide_id] = numpy.array(trig_bestnr[slide_id])
-
-    # Calculate SNR and BestNR values and maxima
-    time_veto_max_snr = {}
-    time_veto_max_bestnr = {}
-    for slide_id in range(num_slides):
-        num_slide_segs = len(trial_dict[slide_id])
-        time_veto_max_snr[slide_id] = numpy.zeros(num_slide_segs)
-        time_veto_max_bestnr[slide_id] = numpy.zeros(num_slide_segs)
-
-    for slide_id in range(num_slides):
-        for j, trial in enumerate(trial_dict[slide_id]):
-            trial_cut = (trial[0] <= trig_time[slide_id])\
-                              & (trig_time[slide_id] < trial[1])
-            if not trial_cut.any():
-                continue
-            # Max SNR
-            time_veto_max_snr[slide_id][j] = \
-                            max(trig_snr[slide_id][trial_cut])
-            # Max BestNR
-            time_veto_max_bestnr[slide_id][j] = \
-                            max(trig_bestnr[slide_id][trial_cut])
-            # Max SNR for triggers passing SBVs
-            sbv_cut = trig_bestnr[slide_id] != 0
-            if not (trial_cut&sbv_cut).any():
-                continue
-
-    # Sort loudest offsource triggers by BestNR
-    offsource_trigs = []
-    for slide_id in range(num_slides):
-        offsource_trigs.extend(zip(trig_bestnr[slide_id], 
-                                   sorted_trigs[slide_id]))
-    offsource_trigs.sort(key=lambda element: element[0])
-    offsource_trigs.reverse()
-    if do_injections:
-        # If do_injections=true then this function is called from 
-        # pycbc_pygrb_inj_followup and it just needs the max
-        # bestnr value to calculate missed injections.
-        max_bestnr, _, _ = max_median_stat(num_slides, time_veto_max_bestnr, 
-                                           trig_bestnr, total_trials)
-        return max_bestnr
-    else:
-        # If do_injections=false we are calling this function from the 
-        # post_processing workflow and are intending to follow-up on
-        # the loudest offsource events. In that case we just need to 
-        # return a list containing the GPS times for the num_followup_trigs
-        # with the approproate time shifts. 
-        loudest_trigs = []
-        for trig_num in range(0, int(num_followup_trigs)):
-            trig = offsource_trigs[trig_num][1]
-            time_shifts = [slide_dict[int(trig.time_slide_id)][ifo] 
-                           for ifo in ifos]
-            loudest_trigs.append([str(int(trig.end_time) + int(ts)) + 
-                                  '.' + str(trig.end_time_ns) 
-                                  for ts in time_shifts])
- 
-        return loudest_trigs
-
 
 
 # =============================================================================
