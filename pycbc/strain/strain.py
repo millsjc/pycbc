@@ -213,6 +213,7 @@ def from_cli(opt, dyn_range_fac=1, precision='single',
             sieve = None
 
         if opt.frame_type:
+            print(opt.frame_type, opt.channel_name)
             strain = pycbc.frame.query_and_read_frame(
                     opt.frame_type, opt.channel_name,
                     start_time=opt.gps_start_time-opt.pad_data,
