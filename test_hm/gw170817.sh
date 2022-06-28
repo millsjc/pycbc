@@ -1,1 +1,43 @@
-./pycbc_multi_inspiral --pad-data 8 --strain-high-pass 15 --sample-rate 4096 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding  --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 4. --cluster-window 0 --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 4. --processing-scheme cpu --channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  --gps-start-time 1187008500 --gps-end-time 1187009100 --trig-start-time 1187008784 --trig-end-time 1187008984 --output TESTING-4096.hdf --instruments H1 L1 V1 --verbose --bank-file GW170817_PyGRB_template.hdf --gating-file H1:H1-GATES-1185937218-1803600.txt L1:L1-GATES-1185937218-1803600.txt --autogating-threshold 100  --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 0 --autogating-cluster 0.5  --frame-type H1:H1_CLEANED_HOFT_C02 L1:L1_CLEANED_HOFT_C02 V1:V1Online --coinc-threshold 7.0 --longitude 3.446131227771 --latitude -0.40812483499946 --trigger-time 1187008884
+pycbc_multi_inspiral_hm \\
+--pad-data 8 \\
+--strain-high-pass 15 \\
+--sample-rate 4096 \\
+--segment-length 512 \\
+--segment-start-pad 144 \\
+--segment-end-pad 16 \\
+--allow-zero-padding  \\
+--taper-data 1 \\
+--psd-estimation median \\
+--psd-segment-length 16 \\
+--psd-segment-stride 8 \\
+--psd-inverse-length 16 \\
+--psd-num-segments 63 \\
+--low-frequency-cutoff 20 \\
+--approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' \\
+--order -1 \\
+--snr-threshold 4. \\
+--cluster-window 0 \\
+--chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" \\
+--newsnr-threshold 4. \\
+--processing-scheme cpu \\
+--channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \\
+--gps-start-time 1187008500 \\
+--gps-end-time 1187009100 \\
+--trig-start-time 1187008784 \\
+--trig-end-time 1187008984 \\
+--output TESTING-4096.hdf \\
+--instruments H1 L1 V1 \\
+--verbose \\
+--bank-file GW170817_PyGRB_template.hdf \\
+--gating-file H1:H1-GATES-1185937218-1803600.txt L1:L1-GATES-1185937218-1803600.txt \\
+--autogating-threshold 100  \\
+--autogating-width 0.25 \\
+--autogating-taper 0.25 \\
+--autogating-pad 0 \\
+--autogating-cluster 0.5  \\
+--frame-type H1:H1_CLEANED_HOFT_C02 L1:L1_CLEANED_HOFT_C02 V1:V1Online \\
+--coinc-threshold 7.0 \\
+--ra 3.446131227771 \\
+--dec -0.40812483499946 \\
+--trigger-time 1187008884 \\
+--verbose \\
