@@ -32,8 +32,7 @@ from pycbc import (
 )
 from pycbc.events import ranking, coherent as coh, EventManagerCoherent
 from pycbc.filter import MatchedFilterControl
-from pycbc.types import TimeSeries, zeros, float32, complex64
-from pycbc.types import MultiDetOptionAction
+from pycbc.types import zeros, float32, complex64
 from pycbc.vetoes import sgchisq
 time_init = time.time()
 parser = argparse.ArgumentParser(description=__doc__)
