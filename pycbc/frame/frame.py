@@ -192,6 +192,7 @@ def read_frame(location, channels, start_time=None,
         locations = [location]
 
     cum_cache = locations_to_cache(locations)
+    print(cum_cache)
     if sieve:
         logging.info("Using frames that match regexp: %s", sieve)
         lal.CacheSieve(cum_cache, 0, 0, None, None, sieve)
@@ -201,7 +202,8 @@ def read_frame(location, channels, start_time=None,
             raise ValueError("Negative or null duration")
         lal.CacheSieve(cum_cache, int(start_time), int(math.ceil(end_time)),
                        None, None, None)
-
+    
+    print(cum_cache)
     stream = lalframe.FrStreamCacheOpen(cum_cache)
     stream.mode = lalframe.FR_STREAM_VERBOSE_MODE
 
