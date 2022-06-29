@@ -1,0 +1,19 @@
+pycbc_multi_inspiral_hm --fake-strain "zeroNoise" --allow-zero-padding \
+--injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
+--asd-file H1:/work/cameron.mills/cit/projects/seed_BHs/asds/curves_May_2019/o3_h1.txt L1:/work/cameron.mills/cit/projects/seed_BHs/asds/curves_May_2019/o3_l1.txt V1:/work/cameron.mills/cit/projects/seed_BHs/asds/curves_May_2019/o3_v1.txt \
+--channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \
+--gps-start-time 1187008500 --gps-end-time 1187009100 \
+--strain-high-pass 15 --sample-rate 4096 \
+--segment-length 512 --segment-start-pad 144 \
+--segment-end-pad 16 --allow-zero-padding  --taper-data 1 \
+--low-frequency-cutoff 20 \
+--approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' \
+--order -1 --snr-threshold 4. --cluster-window 0 \
+--chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" \
+--newsnr-threshold 4. --processing-scheme cpu \
+--output TESTING-4096.hdf \
+--instruments H1 L1 V1 \
+--bank-file GW170817_PyGRB_template.hdf \
+--coinc-threshold 7.0 --ra 3.446131227771 \
+--dec -0.40812483499946 --trigger-time 1187008884 \
+--verbose
