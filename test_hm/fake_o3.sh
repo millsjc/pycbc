@@ -1,6 +1,6 @@
 pycbc_multi_inspiral_hm --fake-strain "zeroNoise" --allow-zero-padding \
 --injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
---psd-model H1:aLIGOEarlyLowSensitivityP1200087 L1:aLIGOEarlyLowSensitivityP1200087 V1:aLIGOEarlyLowSensitivityP1200087 \
+--psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOaLIGOO3LowT1800545 \
 --channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \
 --gps-start-time 1187008500 --gps-end-time 1187009100 \
 --strain-high-pass 15 --sample-rate 4096 \
