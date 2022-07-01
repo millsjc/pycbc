@@ -30,7 +30,7 @@ from pycbc import (
     detector, fft, init_logging, inject, opt, psd, scheme, strain, vetoes,
     waveform, DYN_RANGE_FAC
 )
-from pycbc.events import ranking, coherent as coh, EventManagerCoherent
+from pycbc.events import ranking, coherent as coh, EventManagerCoherent, EventManagerHM
 from pycbc.filter import MatchedFilterControl
 from pycbc.types import zeros, float32, complex64
 from pycbc.vetoes import sgchisq
@@ -203,19 +203,19 @@ with ctx:
             upsample_threshold=args.upsample_threshold,
             upsample_method=args.upsample_method, cluster_function='symmetric')
         for ifo in args.instruments}
-    logging.info("Initializing signal-based vetoes.")
+    logging.info("Not bothering to Initialize signal-based vetoes.")
     # The existing SingleDetPowerChisq can calculate the single detector
     # chisq for multiple ifos, so just use that directly.
-    power_chisq = vetoes.SingleDetPowerChisq(args.chisq_bins)
+    # power_chisq = vetoes.SingleDetPowerChisq(args.chisq_bins)
     # The existing SingleDetBankVeto can calculate the single detector
     # bank veto for multiple ifos, so we just use it directly.
-    bank_chisq = vetoes.SingleDetBankVeto(
-        args.bank_veto_bank_file, flen, delta_f, flow, complex64,
-        phase_order=args.order, approximant=args.approximant)
-    # Same here
-    autochisq = vetoes.SingleDetAutoChisq(
-        args.autochi_stride, args.autochi_number_points,
-        onesided=args.autochi_onesided)
+    # bank_chisq = vetoes.SingleDetBankVeto(
+    #     args.bank_veto_bank_file, flen, delta_f, flow, complex64,
+    #     phase_order=args.order, approximant=args.approximant)
+    # # Same here
+    # autochisq = vetoes.SingleDetAutoChisq(
+    #     args.autochi_stride, args.autochi_number_points,
+    #     onesided=args.autochi_onesided)
     logging.info("Overwhitening frequency-domain data segments")
     for ifo in args.instruments:
         for seg in segments[ifo]:
@@ -224,45 +224,48 @@ with ctx:
         'time_index': int,
         'ifo': int, # IFO is stored as an int internally!
         'snr': complex64,
-        'chisq': float32,
-        'chisq_dof': int,
-        'bank_chisq': float32,
-        'bank_chisq_dof': int,
-        'cont_chisq': float32,
+        # 'chisq': float32,
+        # 'chisq_dof': int,
+        # 'bank_chisq': float32,
+        # 'bank_chisq_dof': int,
+        # 'cont_chisq': float32,
         }
     ifo_out_vals = {
         'time_index': None,
         'ifo': None,
         'snr': None,
-        'chisq': None,
-        'chisq_dof': None,
-        'bank_chisq': None,
-        'bank_chisq_dof': None,
-        'cont_chisq': None,
+        # 'chisq': None,
+        # 'chisq_dof': None,
+        # 'bank_chisq': None,
+        # 'bank_chisq_dof': None,
+        # 'cont_chisq': None,
         }
     ifo_names = sorted(ifo_out_vals.keys())
     network_out_types = {
-        'latitude': float32,
-        'longitude': float32,
+        # 'latitude': float32,
+        # 'longitude': float32,
         'time_index': int,
-        'coherent_snr': float32,
-        'null_snr': float32,
+        'coincident_snr': float32,
+        # # 'coherent_snr': float32,
+        # # 'null_snr': float32,
         'nifo': int,
-        'my_network_chisq': float32,
-        'reweighted_snr': float32
+        # # 'my_network_chisq': float32,
+        # 'reweighted_snr': float32
         }
     network_out_vals = {
-        'latitude': None,
-        'longitude': None,
+        # 'latitude': None,
+        # 'longitude': None,
         'time_index': None,
-        'coherent_snr': None,
-        'null_snr': None,
+        'coincident_snr': None,
+        # 'coherent_snr': None,
+        # 'null_snr': None,
         'nifo': None,
-        'my_network_chisq': None, 
-        'reweighted_snr': None
+        # 'my_network_chisq': None, 
+        # 'reweighted_snr': None
         }
     network_names = sorted(network_out_vals.keys())
-    event_mgr = EventManagerCoherent(
+    # event_mgr = EventManagerCoherent(
+    event_mgr = EventManagerHM(
         args, args.instruments, ifo_names,
         [ifo_out_types[n] for n in ifo_names], network_names,
         [network_out_types[n] for n in network_names])
@@ -281,12 +284,12 @@ with ctx:
     if not len(bank) == n_bank:
         n_bank = len(bank)
         logging.info("Template bank size after thinning: %d", n_bank)
-    # Antenna patterns
-    fp = {}
-    fc = {}
-    for ifo in args.instruments:
-        fp[ifo], fc[ifo] = detector.Detector(ifo).antenna_pattern(
-            args.ra, args.dec, polarization=0, t_gps=t_gps)
+    # # Antenna patterns
+    # fp = {}
+    # fc = {}
+    # for ifo in args.instruments:
+    #     fp[ifo], fc[ifo] = detector.Detector(ifo).antenna_pattern(
+    #         args.ra, args.dec, polarization=0, t_gps=t_gps)
     # Loop over templates
     for t_num, template in enumerate(bank):
         # Loop over segments
@@ -401,50 +404,50 @@ with ctx:
                 logging.info("No triggers above coincident SNR threshold")
             # If we have triggers above coinc threshold and more than 2
             # ifos then calculate the coherent statistics
-            if len(coinc_idx) != 0 and nifo > 2:
-                if args.projection=='left+right':
-                    project_l = coh.get_projection_matrix(
-                        fp, fc, sigma, projection='left')
-                    rho_coh_l, coinc_idx_l, coinc_triggers_l, rho_coinc_l = \
-                        coh.coherent_snr(
-                            coinc_triggers, coinc_idx, args.coinc_threshold,
-                            project_l, rho_coinc)
-                    project_r = coh.get_projection_matrix(
-                        fp, fc, sigma, projection='right')
-                    rho_coh_r, coinc_idx_r, coinc_triggers_r, rho_coinc_r = \
-                        coh.coherent_snr(
-                            coinc_triggers, coinc_idx, args.coinc_threshold,
-                            project_r, rho_coinc)
-                    max_idx = np.argmax([rho_coh_l, rho_coh_r], axis=0)
-                    rho_coh = np.where(max_idx==0, rho_coh_l, rho_coh_r)
-                    coinc_idx = np.where(
-                        max_idx==0, coinc_idx_l, coinc_idx_r)
-                    coinc_triggers = {
-                        ifo: np.where(
-                            max_idx==0, coinc_triggers_l[ifo],
-                            coinc_triggers_r[ifo])
-                        for ifo in coinc_triggers_l}
-                    rho_coinc = np.where(
-                        max_idx==0, rho_coinc_l, rho_coinc_r)
-                else:
-                    project = coh.get_projection_matrix(
-                        fp, fc, sigma, projection=args.projection)
-                    rho_coh, coinc_idx, coinc_triggers, rho_coinc = \
-                        coh.coherent_snr(
-                            coinc_triggers, coinc_idx, args.coinc_threshold,
-                            project, rho_coinc)
-                logging.info(
-                    "%d points above coherent threshold", len(rho_coh))
-                if len(coinc_idx) != 0:
-                    logging.info("Max coherent SNR = %.2f", max(rho_coh))
-                    #Find the null snr
-                    null, rho_coh, rho_coinc, coinc_idx, coinc_triggers = \
-                        coh.null_snr(
-                            rho_coh, rho_coinc, snrv=coinc_triggers,
-                            index=coinc_idx, apply_cut=args.do_null_cut)
-                    if len(coinc_idx) != 0:
-                        logging.info("Max null SNR = %.2f", max(null))
-                    logging.info("%d points above null threshold", len(null))
+            # if len(coinc_idx) != 0 and nifo > 2:
+            #     if args.projection=='left+right':
+            #         project_l = coh.get_projection_matrix(
+            #             fp, fc, sigma, projection='left')
+            #         rho_coh_l, coinc_idx_l, coinc_triggers_l, rho_coinc_l = \
+            #             coh.coherent_snr(
+            #                 coinc_triggers, coinc_idx, args.coinc_threshold,
+            #                 project_l, rho_coinc)
+            #         project_r = coh.get_projection_matrix(
+            #             fp, fc, sigma, projection='right')
+            #         rho_coh_r, coinc_idx_r, coinc_triggers_r, rho_coinc_r = \
+            #             coh.coherent_snr(
+            #                 coinc_triggers, coinc_idx, args.coinc_threshold,
+            #                 project_r, rho_coinc)
+            #         max_idx = np.argmax([rho_coh_l, rho_coh_r], axis=0)
+            #         rho_coh = np.where(max_idx==0, rho_coh_l, rho_coh_r)
+            #         coinc_idx = np.where(
+            #             max_idx==0, coinc_idx_l, coinc_idx_r)
+            #         coinc_triggers = {
+            #             ifo: np.where(
+            #                 max_idx==0, coinc_triggers_l[ifo],
+            #                 coinc_triggers_r[ifo])
+            #             for ifo in coinc_triggers_l}
+            #         rho_coinc = np.where(
+            #             max_idx==0, rho_coinc_l, rho_coinc_r)
+            #     else:
+            #         project = coh.get_projection_matrix(
+            #             fp, fc, sigma, projection=args.projection)
+            #         rho_coh, coinc_idx, coinc_triggers, rho_coinc = \
+            #             coh.coherent_snr(
+            #                 coinc_triggers, coinc_idx, args.coinc_threshold,
+            #                 project, rho_coinc)
+            #     logging.info(
+            #         "%d points above coherent threshold", len(rho_coh))
+            #     if len(coinc_idx) != 0:
+            #         logging.info("Max coherent SNR = %.2f", max(rho_coh))
+            #         #Find the null snr
+            #         null, rho_coh, rho_coinc, coinc_idx, coinc_triggers = \
+            #             coh.null_snr(
+            #                 rho_coh, rho_coinc, snrv=coinc_triggers,
+            #                 index=coinc_idx, apply_cut=args.do_null_cut)
+            #         if len(coinc_idx) != 0:
+            #             logging.info("Max null SNR = %.2f", max(null))
+            #         logging.info("%d points above null threshold", len(null))
             # We are now going to find the individual detector chi2 values.
             # To do this it is useful to find the indexes of coinc triggers
             # in the detector frame.
@@ -460,57 +463,58 @@ with ctx:
                 # Calculate the power and autochi2 values for the coinc
                 # indexes this uses the snr timeseries before the time
                 # delay, so we need to undo it. Same for normalisation)
-                chisq = {}
-                chisq_dof = {}
-                for ifo in args.instruments:
-                    chisq[ifo], chisq_dof[ifo] = power_chisq.values(
-                        corr_dict[ifo],
-                        coherent_ifo_trigs[ifo] / norm_dict[ifo],
-                        norm_dict[ifo], stilde[ifo].psd,
-                        coinc_idx_det_frame[ifo] + stilde[ifo].analyze.start,
-                        template)
-                # Calculate network chisq value
-                network_chisq_dict = coh.network_chisq(
-                    chisq, chisq_dof, coherent_ifo_trigs)
-                # Calculate chisq reweighted SNR
-                if nifo > 2:
-                    reweighted_snr = ranking.newsnr(
-                        rho_coh, network_chisq_dict)
-                    # Calculate null reweighted SNR
-                    reweighted_snr = coh.reweight_snr_by_null(
-                        reweighted_snr, null, rho_coh)
-                elif nifo == 2:
-                    reweighted_snr = ranking.newsnr(
-                        rho_coinc, network_chisq_dict)
-                else:
-                    rho_sngl = abs(
-                        snr[args.instruments[0]][
-                            coinc_idx_det_frame[args.instruments[0]]
-                            ]
-                        )
-                    reweighted_snr = ranking.newsnr(
-                        rho_sngl, network_chisq_dict)
-                # Cut based on reweighted snr and the given newsnr_threshold parameter
-                reweighted_snr = coh.reweightedsnr_cut(reweighted_snr, args.newsnr_threshold)
+                # chisq = {}
+                # chisq_dof = {}
+                # for ifo in args.instruments:
+                #     chisq[ifo], chisq_dof[ifo] = power_chisq.values(
+                #         corr_dict[ifo],
+                #         coherent_ifo_trigs[ifo] / norm_dict[ifo],
+                #         norm_dict[ifo], stilde[ifo].psd,
+                #         coinc_idx_det_frame[ifo] + stilde[ifo].analyze.start,
+                #         template)
+                # # Calculate network chisq value
+                # network_chisq_dict = coh.network_chisq(
+                #     chisq, chisq_dof, coherent_ifo_trigs)
+                # # Calculate chisq reweighted SNR
+                # if nifo > 2:
+                #     reweighted_snr = ranking.newsnr(
+                #         rho_coh, network_chisq_dict)
+                #     # Calculate null reweighted SNR
+                #     reweighted_snr = coh.reweight_snr_by_null(
+                #         reweighted_snr, null, rho_coh)
+                # elif nifo == 2:
+                #     reweighted_snr = ranking.newsnr(
+                #         rho_coinc, network_chisq_dict)
+                # else:
+                #     rho_sngl = abs(
+                #         snr[args.instruments[0]][
+                #             coinc_idx_det_frame[args.instruments[0]]
+                #             ]
+                #         )
+                #     reweighted_snr = ranking.newsnr(
+                #         rho_sngl, network_chisq_dict)
+                # # Cut based on reweighted snr and the given newsnr_threshold parameter
+                # reweighted_snr = coh.reweightedsnr_cut(reweighted_snr, args.newsnr_threshold)
                 # Need all out vals to be the same length. This means the
                 # entries that are single values need to be repeated once
                 # per event.
-                num_events = len(reweighted_snr)
+                # num_events = len(reweighted_snr)
+                num_events = len(coinc_idx)
                 # the output will only be possible if
                 # len(networkchi2) == num_events
                 for ifo in args.instruments:
-                    (ifo_out_vals['bank_chisq'],
-                     ifo_out_vals['bank_chisq_dof']) = bank_chisq.values(
-                        template, stilde[ifo].psd, stilde[ifo],
-                        coherent_ifo_trigs[ifo] / norm_dict[ifo],
-                        norm_dict[ifo],
-                        coinc_idx_det_frame[ifo] + stilde[ifo].analyze.start)
-                    ifo_out_vals['cont_chisq'] = autochisq.values(
-                        snr[ifo] / norm_dict[ifo], coinc_idx_det_frame[ifo],
-                        template, stilde[ifo].psd, norm_dict[ifo],
-                        stilde=stilde[ifo], low_frequency_cutoff=flow)
-                    ifo_out_vals['chisq'] = chisq[ifo]
-                    ifo_out_vals['chisq_dof'] = chisq_dof[ifo]
+                    # (ifo_out_vals['bank_chisq'],
+                    #  ifo_out_vals['bank_chisq_dof']) = bank_chisq.values(
+                    #     template, stilde[ifo].psd, stilde[ifo],
+                    #     coherent_ifo_trigs[ifo] / norm_dict[ifo],
+                    #     norm_dict[ifo],
+                    #     coinc_idx_det_frame[ifo] + stilde[ifo].analyze.start)
+                    # ifo_out_vals['cont_chisq'] = autochisq.values(
+                    #     snr[ifo] / norm_dict[ifo], coinc_idx_det_frame[ifo],
+                    #     template, stilde[ifo].psd, norm_dict[ifo],
+                    #     stilde=stilde[ifo], low_frequency_cutoff=flow)
+                    # ifo_out_vals['chisq'] = chisq[ifo]
+                    # ifo_out_vals['chisq_dof'] = chisq_dof[ifo]
                     ifo_out_vals['time_index'] = (
                         coinc_idx_det_frame[ifo] + stilde[ifo].cumulative_index
                         )
@@ -520,25 +524,27 @@ with ctx:
                         [event_mgr.ifo_dict[ifo]] * num_events)
                     event_mgr.add_template_events_to_ifo(
                         ifo, ifo_names, [ifo_out_vals[n] for n in ifo_names])
-                if nifo>2:
-                    network_out_vals['coherent_snr'] = np.real(rho_coh)
-                    network_out_vals['null_snr'] = np.real(null)
-                elif nifo==2:
-                    network_out_vals['coherent_snr'] = np.real(rho_coinc)
-                else:
-                    network_out_vals['coherent_snr'] = (
-                        abs(snr[args.instruments[0]][
-                            coinc_idx_det_frame[args.instruments[0]]
-                            ])
-                        )
-                network_out_vals['reweighted_snr'] = reweighted_snr
-                network_out_vals['my_network_chisq'] = (
-                    np.real(network_chisq_dict))
+
+                # if nifo>2:
+                #     network_out_vals['coherent_snr'] = np.real(rho_coh)
+                #     network_out_vals['null_snr'] = np.real(null)
+                # elif nifo==2:
+                #     network_out_vals['coherent_snr'] = np.real(rho_coinc)
+                # else:
+                #     network_out_vals['coherent_snr'] = (
+                #         abs(snr[args.instruments[0]][
+                #             coinc_idx_det_frame[args.instruments[0]]
+                #             ])
+                #         )
+                # network_out_vals['reweighted_snr'] = reweighted_snr
+                # network_out_vals['my_network_chisq'] = (
+                #     np.real(network_chisq_dict))
+                network_out_vals['coincident_snr'] = np.real(rho_coinc)
                 network_out_vals['time_index'] = (
                     coinc_idx + stilde[ifo].cumulative_index)
                 network_out_vals['nifo'] = [nifo] * num_events
-                network_out_vals['ra'] = [args.ra] * num_events
-                network_out_vals['dec'] = [args.dec] * num_events
+                # network_out_vals['ra'] = [args.ra] * num_events
+                # network_out_vals['dec'] = [args.dec] * num_events
                 event_mgr.add_template_events_to_network(
                     network_names,
                     [network_out_vals[n] for n in network_names])
@@ -548,7 +554,8 @@ with ctx:
         elif args.cluster_method == "template":
             cluster_window = int(template.chirp_length * sample_rate)
         event_mgr.cluster_template_network_events(
-            "time_index", "coherent_snr", cluster_window)
+            "time_index", "coincident_snr", cluster_window)
+            # "time_index", "coherent_snr", cluster_window)
         event_mgr.finalize_template_events()
 event_mgr.write_events(args.output)
 logging.info("Finished")
