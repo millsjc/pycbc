@@ -9,8 +9,7 @@ pycbc_multi_inspiral_hm --fake-strain "zeroNoise" --allow-zero-padding \
 --low-frequency-cutoff 20 \
 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' \
 --order -1 --snr-threshold 4. --cluster-window 0 \
---chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" \
---newsnr-threshold 4. --processing-scheme cpu \
+--processing-scheme cpu \
 --output TESTING-4096.hdf \
 --instruments H1 L1 V1 \
 --bank-file GW170817_PyGRB_template.hdf \
