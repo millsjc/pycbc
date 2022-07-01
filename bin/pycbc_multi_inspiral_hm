@@ -45,8 +45,6 @@ parser.add_argument("--instruments", nargs="+", type=str, required=True,
 parser.add_argument("--bank-file", type=str)
 parser.add_argument("--snr-threshold", type=float,
                     help="SNR threshold for trigger generation")
-# parser.add_argument("--newsnr-threshold", type=float, metavar='THRESHOLD',
-#                     help="Cut triggers with NewSNR less than THRESHOLD")
 parser.add_argument("--low-frequency-cutoff", type=float,
                     help="The low frequency cutoff to use for filtering "
                          "(Hz)")
@@ -69,14 +67,6 @@ parser.add_argument("--cluster-method", choices=["template", "window"],
 parser.add_argument("--cluster-window", type=float, default=0,
                     help="Length of clustering window in seconds.")
 parser.add_argument("--bank-veto-bank-file", type=str)
-# parser.add_argument("--chisq-bins", default=0)
-# Commenting out options which are not yet implemented
-# parser.add_argument("--chisq-threshold", type=float, default=0) 
-# parser.add_argument("--chisq-delta", type=float, default=0)
-# parser.add_argument("--autochi-number-points", type=int, default=0)
-# parser.add_argument("--autochi-stride", type=int, default=0)
-# parser.add_argument("--autochi-onesided", action='store_true',
-                    # default=False)
 parser.add_argument("--downsample-factor", type=int, default=1,
                     help="Factor that determines the interval between the "
                          "initial SNR sampling. If not set (or 1) no sparse "
@@ -109,7 +99,6 @@ scheme.insert_processing_option_group(parser)
 fft.insert_fft_option_group(parser)
 opt.insert_optimization_option_group(parser)
 inject.insert_injfilterrejector_option_group_multi_ifo(parser)
-# sgchisq.SingleDetSGChisq.insert_option_group(parser)
 args = parser.parse_args()
 init_logging(args.verbose)
 # Set GRB time variable for convenience
@@ -175,6 +164,7 @@ with ctx:
         dt = detector.Detector(ifo).time_delay_from_earth_center(
             args.ra, args.dec, t_gps)
         time_delay_idx[ifo] = int(round(dt * sample_rate))
+    # FIXME: consider whether to cluster earlier for the HM search.
     # Matched filter each ifo. Don't cluster here for a coherent search.
     # Clustering happens at the end of the template loop.
     # FIXME: The single detector SNR threshold should not necessarily be
@@ -188,19 +178,6 @@ with ctx:
             upsample_threshold=args.upsample_threshold,
             upsample_method=args.upsample_method, cluster_function='symmetric')
         for ifo in args.instruments}
-    logging.info("Not bothering to Initialize signal-based vetoes.")
-    # The existing SingleDetPowerChisq can calculate the single detector
-    # chisq for multiple ifos, so just use that directly.
-    # power_chisq = vetoes.SingleDetPowerChisq(args.chisq_bins)
-    # The existing SingleDetBankVeto can calculate the single detector
-    # bank veto for multiple ifos, so we just use it directly.
-    # bank_chisq = vetoes.SingleDetBankVeto(
-    #     args.bank_veto_bank_file, flen, delta_f, flow, complex64,
-    #     phase_order=args.order, approximant=args.approximant)
-    # # Same here
-    # autochisq = vetoes.SingleDetAutoChisq(
-    #     args.autochi_stride, args.autochi_number_points,
-    #     onesided=args.autochi_onesided)
     logging.info("Overwhitening frequency-domain data segments")
     for ifo in args.instruments:
         for seg in segments[ifo]:
@@ -358,6 +335,7 @@ with ctx:
             else:
                 coinc_triggers = {}
                 logging.info("No triggers above coincident SNR threshold")
+            # FIXME: remove this comment?
             # We are now going to find the individual detector chi2 values.
             # To do this it is useful to find the indexes of coinc triggers
             # in the detector frame.
@@ -370,61 +348,8 @@ with ctx:
                 coherent_ifo_trigs = {
                     ifo: snr_dict[ifo][coinc_idx_det_frame[ifo]]
                     for ifo in args.instruments}
-                # Calculate the power and autochi2 values for the coinc
-                # indexes this uses the snr timeseries before the time
-                # delay, so we need to undo it. Same for normalisation)
-                # chisq = {}
-                # chisq_dof = {}
-                # for ifo in args.instruments:
-                #     chisq[ifo], chisq_dof[ifo] = power_chisq.values(
-                #         corr_dict[ifo],
-                #         coherent_ifo_trigs[ifo] / norm_dict[ifo],
-                #         norm_dict[ifo], stilde[ifo].psd,
-                #         coinc_idx_det_frame[ifo] + stilde[ifo].analyze.start,
-                #         template)
-                # # Calculate network chisq value
-                # network_chisq_dict = coh.network_chisq(
-                #     chisq, chisq_dof, coherent_ifo_trigs)
-                # # Calculate chisq reweighted SNR
-                # if nifo > 2:
-                #     reweighted_snr = ranking.newsnr(
-                #         rho_coh, network_chisq_dict)
-                #     # Calculate null reweighted SNR
-                #     reweighted_snr = coh.reweight_snr_by_null(
-                #         reweighted_snr, null, rho_coh)
-                # elif nifo == 2:
-                #     reweighted_snr = ranking.newsnr(
-                #         rho_coinc, network_chisq_dict)
-                # else:
-                #     rho_sngl = abs(
-                #         snr[args.instruments[0]][
-                #             coinc_idx_det_frame[args.instruments[0]]
-                #             ]
-                #         )
-                #     reweighted_snr = ranking.newsnr(
-                #         rho_sngl, network_chisq_dict)
-                # # Cut based on reweighted snr and the given newsnr_threshold parameter
-                # reweighted_snr = coh.reweightedsnr_cut(reweighted_snr, args.newsnr_threshold)
-                # Need all out vals to be the same length. This means the
-                # entries that are single values need to be repeated once
-                # per event.
-                # num_events = len(reweighted_snr)
                 num_events = len(coinc_idx)
-                # the output will only be possible if
-                # len(networkchi2) == num_events
                 for ifo in args.instruments:
-                    # (ifo_out_vals['bank_chisq'],
-                    #  ifo_out_vals['bank_chisq_dof']) = bank_chisq.values(
-                    #     template, stilde[ifo].psd, stilde[ifo],
-                    #     coherent_ifo_trigs[ifo] / norm_dict[ifo],
-                    #     norm_dict[ifo],
-                    #     coinc_idx_det_frame[ifo] + stilde[ifo].analyze.start)
-                    # ifo_out_vals['cont_chisq'] = autochisq.values(
-                    #     snr[ifo] / norm_dict[ifo], coinc_idx_det_frame[ifo],
-                    #     template, stilde[ifo].psd, norm_dict[ifo],
-                    #     stilde=stilde[ifo], low_frequency_cutoff=flow)
-                    # ifo_out_vals['chisq'] = chisq[ifo]
-                    # ifo_out_vals['chisq_dof'] = chisq_dof[ifo]
                     ifo_out_vals['time_index'] = (
                         coinc_idx_det_frame[ifo] + stilde[ifo].cumulative_index
                         )
@@ -434,8 +359,6 @@ with ctx:
                         [event_mgr.ifo_dict[ifo]] * num_events)
                     event_mgr.add_template_events_to_ifo(
                         ifo, ifo_names, [ifo_out_vals[n] for n in ifo_names])
-
-                # if nmodes>2:
 
                 network_out_vals['coincident_snr'] = np.real(rho_coinc)
                 network_out_vals['time_index'] = (
