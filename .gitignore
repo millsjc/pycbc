@@ -10,3 +10,4 @@ build/
 *.pyc
 docs/Makefile
 PyCBC.egg-info
+test_hm/playground/.ipynb_checkpoints/*
