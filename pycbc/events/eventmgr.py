@@ -969,21 +969,6 @@ class EventManagerHM(EventManagerCoherent):
                 f['template_duration'] = numpy.array(template_durations,
                                                      dtype=numpy.float32)[tid]
 
-                # FIXME: Can we get this value from the autochisq instance?
-                # cont_dof = self.opt.autochi_number_points
-                # if self.opt.autochi_onesided is None:
-                #     cont_dof = cont_dof * 2
-                # if self.opt.autochi_two_phase:
-                #     cont_dof = cont_dof * 2
-                # if self.opt.autochi_max_valued_dof:
-                #     cont_dof = self.opt.autochi_max_valued_dof
-                # f['cont_chisq_dof'] = numpy.repeat(cont_dof, len(ifo_events))
-
-                # if 'chisq_dof' in ifo_events.dtype.names:
-                #     f['chisq_dof'] = ifo_events['chisq_dof'] / 2 + 1
-                # else:
-                #     f['chisq_dof'] = numpy.zeros(len(ifo_events))
-
                 f['template_hash'] = th[tid]
 
             if self.opt.trig_start_time:
