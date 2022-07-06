@@ -923,46 +923,23 @@ class EventManagerHM(EventManagerCoherent):
                     if e['ifo'] == self.ifo_dict[ifo]], dtype=self.event_dtype)
             if len(ifo_events):
                 ifo_str = ifo.lower()[0] if ifo != 'H1' else ifo.lower()
-                f['snr_%s' % ifo_str] = abs(ifo_events['snr'])
+                f['snr_dominant_%s' % ifo_str] = abs(ifo_events['snr_dominant'])
+                f['snr_subdominant_%s' % ifo_str] = abs(ifo_events['snr_subdominant'])
                 f['event_id'] = ifo_events['event_id']
-                try:
-                    # Precessing
-                    f['u_vals'] = ifo_events['u_vals']
-                    f['coa_phase'] = ifo_events['coa_phase']
-                    f['hplus_cross_corr'] = ifo_events['hplus_cross_corr']
-                except Exception:
-                    f['coa_phase'] = numpy.angle(ifo_events['snr'])
-                # f['chisq'] = ifo_events['chisq']
-                # f['bank_chisq'] = ifo_events['bank_chisq']
-                # f['bank_chisq_dof'] = ifo_events['bank_chisq_dof']
-                # f['cont_chisq'] = ifo_events['cont_chisq']
+                f['coa_phase_dom'] = numpy.angle(ifo_events['snr_dominant'])
+                f['coa_phase_sub'] = numpy.angle(ifo_events['snr_subdominant'])
                 f['end_time'] = ifo_events['time_index'] / \
                         float(self.opt.sample_rate[ifo_str]) + \
                         self.opt.gps_start_time[ifo_str]
                 f['time_index'] = ifo_events['time_index']
-                try:
-                    # Precessing
-                    template_sigmasq_plus = numpy.array(
-                        [t['sigmasq_plus'] for t in self.template_params],
-                        dtype=numpy.float32
-                    )
-                    f['sigmasq_plus'] = template_sigmasq_plus[tid]
-                    template_sigmasq_cross = numpy.array(
-                        [t['sigmasq_cross'] for t in self.template_params],
-                        dtype=numpy.float32
-                    )
-                    f['sigmasq_cross'] = template_sigmasq_cross[tid]
-                    # FIXME: I want to put something here, but I haven't yet
-                    #      figured out what it should be. I think we would also
-                    #      need information from the plus and cross correlation
-                    #      (both real and imaginary(?)) to get this.
-                    f['sigmasq'] = template_sigmasq_plus[tid]
-                except Exception:
-                    # Not precessing
-                    template_sigmasq = numpy.array(
-                             [t['sigmasq'][ifo] for t in self.template_params],
-                                                   dtype=numpy.float32)
-                    f['sigmasq'] = template_sigmasq[tid]
+                template_sigmasq_dom = numpy.array(
+                            [t['sigmasq_dom'][ifo] for t in self.template_params],
+                                                dtype=numpy.float32)
+                f['sigmasq_dom'] = template_sigmasq_dom[tid]
+                template_sigmasq_sub = numpy.array(
+                            [t['sigmasq_sub'][ifo] for t in self.template_params],
+                                                dtype=numpy.float32)
+                f['sigmasq_sub'] = template_sigmasq_sub[tid]
 
                 template_durations = [p['tmplt'].template_duration for p in
                                       self.template_params]
