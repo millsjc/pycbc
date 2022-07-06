@@ -927,6 +927,201 @@ class FilterBankSkyMax(TemplateBank):
         return hplus, hcross
 
 
+class FilterBankHM(TemplateBank):
+    def __init__(self, filename, filter_length, delta_f, dtype,
+                 out_dom=None, out_sub=None, max_template_length=None,
+                 approximant=None, parameters=None,
+                 enable_compressed_waveforms=True,
+                 low_frequency_cutoff=None,
+                 waveform_decompression_method=None,
+                 **kwds):
+        self.modes = ["22", "22"]
+        self.out_dom = out_dom
+        self.out_sub = out_sub
+        self.dtype = dtype
+        self.f_lower = low_frequency_cutoff
+        self.filename = filename
+        self.delta_f = delta_f
+        self.N = (filter_length - 1 ) * 2
+        self.delta_t = 1.0 / (self.N * self.delta_f)
+        self.filter_length = filter_length
+        self.max_template_length = max_template_length
+        self.enable_compressed_waveforms = enable_compressed_waveforms
+        self.waveform_decompression_method = waveform_decompression_method
+
+        super(FilterBankHM, self).__init__(filename, approximant=approximant,
+            parameters=parameters, **kwds)
+        self.ensure_standard_filter_columns(low_frequency_cutoff=low_frequency_cutoff)
+
+    def __getitem__(self, index):
+        # Make new memory for templates if we aren't given output memory
+        if self.out_dom is None:
+            tempoutdom = zeros(self.filter_length, dtype=self.dtype)
+        else:
+            tempoutdom = self.out_dom
+        if self.out_sub is None:
+            tempoutsub = zeros(self.filter_length, dtype=self.dtype)
+        else:
+            tempoutsub = self.out_sub
+
+        approximant = self.approximant(index)
+
+        # Get the end of the waveform if applicable (only for SPAtmplt atm)
+        f_end = self.end_frequency(index)
+        if f_end is None or f_end >= (self.filter_length * self.delta_f):
+            f_end = (self.filter_length-1) * self.delta_f
+
+        # Find the start frequency, if variable
+        f_low = find_variable_start_frequency(approximant,
+                                              self.table[index],
+                                              self.f_lower,
+                                              self.max_template_length)
+        logging.info('%s: generating %s from %s Hz', index, approximant, f_low)
+
+        # What does this do???
+        poke1 = tempoutdom.data # pylint:disable=unused-variable
+        poke2 = tempoutsub.data # pylint:disable=unused-variable
+
+        # Clear the storage memory
+        tempoutdom.clear()
+        tempoutsub.clear()
+
+        # Get the waveform filter
+        distance = 1.0 / DYN_RANGE_FAC
+        if self.has_compressed_waveforms and self.enable_compressed_waveforms:
+            # stub here.
+            raise ValueError("decompressed waveforms not yet implemented for HM filters.")
+            # htilde = self.get_decompressed_waveform(tempout, index, f_lower=f_low,
+            #                                         approximant=approximant, df=None)
+        else :
+            htilde = pycbc.waveform.get_hm_filters(
+                tempoutdom[0:self.filter_length], 
+                tempoutsub[0:self.filter_length], self.table[index],
+                approximant=approximant, f_lower=f_low, f_final=f_end,
+                delta_f=self.delta_f, delta_t=self.delta_t, distance=distance,
+                self.modes[index],
+                **self.extra_args)
+
+        # If available, record the total duration (which may
+        # include ringdown) and the duration up to merger since they will be
+        # erased by the type conversion below.
+        ttotal = template_duration = None
+        if hasattr(htilde, 'length_in_time'):
+            ttotal = htilde.length_in_time
+        if hasattr(htilde, 'chirp_length'):
+            template_duration = htilde.chirp_length
+
+        self.table[index].template_duration = template_duration
+
+        htilde = htilde.astype(self.dtype)
+        htilde.f_lower = f_low
+        htilde.min_f_lower = self.min_f_lower
+        htilde.end_idx = int(f_end / htilde.delta_f)
+        htilde.params = self.table[index]
+        htilde.chirp_length = template_duration
+        htilde.length_in_time = ttotal
+        htilde.approximant = approximant
+        htilde.end_frequency = f_end
+
+        # Add sigmasq as a method of this instance
+        htilde.sigmasq = types.MethodType(sigma_cached, htilde)
+        htilde._sigmasq = {}
+        return htilde
+
+        # Get the waveform filter
+        distance = 1.0 / DYN_RANGE_FAC
+        hplus, hcross = pycbc.waveform.get_two_pol_waveform_filter(
+            tempoutdom[0:self.filter_length],
+            tempoutsub[0:self.filter_length], self.table[index],
+            approximant=approximant, f_lower=f_low,
+            f_final=f_end, delta_f=self.delta_f, delta_t=self.delta_t,
+            distance=distance, **self.extra_args)
+
+        if hasattr(hplus, 'chirp_length') and hplus.chirp_length is not None:
+            self.table[index].template_duration = hplus.chirp_length
+
+        hplus = hplus.astype(self.dtype)
+        hcross = hcross.astype(self.dtype)
+        hplus.f_lower = f_low
+        hcross.f_lower = f_low
+        hplus.min_f_lower = self.min_f_lower
+        hcross.min_f_lower = self.min_f_lower
+        hplus.end_frequency = f_end
+        hcross.end_frequency = f_end
+        hplus.end_idx = int(hplus.end_frequency / hplus.delta_f)
+        hcross.end_idx = int(hplus.end_frequency / hplus.delta_f)
+        hplus.params = self.table[index]
+        hcross.params = self.table[index]
+        hplus.approximant = approximant
+        hcross.approximant = approximant
+
+        # Add sigmasq as a method of this instance
+        hplus.sigmasq = types.MethodType(sigma_cached, hplus)
+        hplus._sigmasq = {}
+        hcross.sigmasq = types.MethodType(sigma_cached, hcross)
+        hcross._sigmasq = {}
+
+        return hplus, hcross
+def __getitem__(self, index):
+        # Make new memory for templates if we aren't given output memory
+        if self.out is None:
+            tempout = zeros(self.filter_length, dtype=self.dtype)
+        else:
+            tempout = self.out
+
+        approximant = self.approximant(index)
+        f_end = self.end_frequency(index)
+        if f_end is None or f_end >= (self.filter_length * self.delta_f):
+            f_end = (self.filter_length-1) * self.delta_f
+
+        # Find the start frequency, if variable
+        f_low = find_variable_start_frequency(approximant,
+                                              self.table[index],
+                                              self.f_lower,
+                                              self.max_template_length)
+        logging.info('%s: generating %s from %s Hz' % (index, approximant, f_low))
+
+        # Clear the storage memory
+        poke  = tempout.data # pylint:disable=unused-variable
+        tempout.clear()
+
+        # Get the waveform filter
+        distance = 1.0 / DYN_RANGE_FAC
+        if self.has_compressed_waveforms and self.enable_compressed_waveforms:
+            htilde = self.get_decompressed_waveform(tempout, index, f_lower=f_low,
+                                                    approximant=approximant, df=None)
+        else :
+            htilde = pycbc.waveform.get_waveform_filter(
+                tempout[0:self.filter_length], self.table[index],
+                approximant=approximant, f_lower=f_low, f_final=f_end,
+                delta_f=self.delta_f, delta_t=self.delta_t, distance=distance,
+                **self.extra_args)
+
+        # If available, record the total duration (which may
+        # include ringdown) and the duration up to merger since they will be
+        # erased by the type conversion below.
+        ttotal = template_duration = None
+        if hasattr(htilde, 'length_in_time'):
+            ttotal = htilde.length_in_time
+        if hasattr(htilde, 'chirp_length'):
+            template_duration = htilde.chirp_length
+
+        self.table[index].template_duration = template_duration
+
+        htilde = htilde.astype(self.dtype)
+        htilde.f_lower = f_low
+        htilde.min_f_lower = self.min_f_lower
+        htilde.end_idx = int(f_end / htilde.delta_f)
+        htilde.params = self.table[index]
+        htilde.chirp_length = template_duration
+        htilde.length_in_time = ttotal
+        htilde.approximant = approximant
+        htilde.end_frequency = f_end
+
+        # Add sigmasq as a method of this instance
+        htilde.sigmasq = types.MethodType(sigma_cached, htilde)
+        htilde._sigmasq = {}
+        return htilde
 __all__ = ('sigma_cached', 'boolargs_from_apprxstr', 'add_approximant_arg',
            'parse_approximant_arg', 'tuple_to_hash', 'TemplateBank',
            'LiveFilterBank', 'FilterBank', 'find_variable_start_frequency',
