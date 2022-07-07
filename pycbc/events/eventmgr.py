@@ -902,9 +902,8 @@ class EventManagerHM(EventManagerCoherent):
         network_events = numpy.array([e for e in self.network_events],
                                      dtype=self.network_event_dtype)
         f['event_id'] = network_events['event_id']
-        # f['coherent_snr'] = network_events['coherent_snr']
-        # f['reweighted_snr'] = network_events['reweighted_snr']
-        # f['null_snr'] = network_events['null_snr']
+        f['snr_2_filter'] = network_events['snr_2_filter']
+        f['snr_2_filter_rss'] = network_events['snr_2_filter_rss']
         f['end_time_gc'] = network_events['time_index'] / \
                 float(self.opt.sample_rate[self.ifos[0].lower()]) + \
                         self.opt.gps_start_time[self.ifos[0].lower()]

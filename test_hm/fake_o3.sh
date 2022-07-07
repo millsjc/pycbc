@@ -7,7 +7,7 @@ pycbc_multi_inspiral_hm --fake-strain "zeroNoise" --allow-zero-padding \
 --segment-length 512 --segment-start-pad 144 \
 --segment-end-pad 16 --allow-zero-padding  --taper-data 1 \
 --low-frequency-cutoff 20 \
---approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' \
+--approximant 'IMRPhenomHM:mtotal<4' 'IMRPhenomHM:else' \
 --order -1 --snr-threshold 4. --cluster-window 0 \
 --processing-scheme cpu \
 --output TESTING-4096.hdf \

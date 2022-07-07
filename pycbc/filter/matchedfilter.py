@@ -469,6 +469,159 @@ class MatchedFilterControl(object):
             raise ValueError("Invalid upsample method")
 
 
+class MatchedFilterControlHM(object):
+    def __init__(self, low_frequency_cutoff, high_frequency_cutoff, snr_threshold, tlen,
+                 delta_f, dtype, segment_list, dom_template_output, sub_template_output, 
+                 use_cluster, downsample_factor=1, upsample_threshold=1, 
+                 upsample_method='pruned_fft', gpu_callback_method='none', 
+                 cluster_function='symmetric'):
+        """ Create a matched filter engine for the 2 filter search.
+
+        Parameters
+        ----------
+        low_frequency_cutoff : {None, float}, optional
+            The frequency to begin the filter calculation. If None, begin at the
+            first frequency after DC.
+        high_frequency_cutoff : {None, float}, optional
+            The frequency to stop the filter calculation. If None, continue to the
+            the nyquist frequency.
+        snr_threshold : float
+            The minimum snr to return when filtering
+        segment_list : list
+            List of FrequencySeries that are the Fourier-transformed data segments
+        template_output : complex64
+            Array of memory given as the 'out' parameter to waveform.FilterBank
+        use_cluster : boolean
+            If true, cluster triggers above threshold using a window; otherwise,
+            only apply a threshold.
+        downsample_factor : {1, int}, optional
+            The factor by which to reduce the sample rate when doing a heirarchical
+            matched filter
+        upsample_threshold : {1, float}, optional
+            The fraction of the snr_threshold to trigger on the subsampled filter.
+        upsample_method : {pruned_fft, str}
+            The method to upsample or interpolate the reduced rate filter.
+        cluster_function : {symmetric, str}, optional
+            Which method is used to cluster triggers over time. If 'findchirp', a
+            sliding forward window; if 'symmetric', each window's peak is compared
+            to the windows before and after it, and only kept as a trigger if larger
+            than both.
+        """
+        # Assuming analysis time is constant across templates and segments, also
+        # delta_f is constant across segments.
+        self.tlen = tlen
+        self.flen = self.tlen / 2 + 1
+        self.delta_f = delta_f
+        self.delta_t = 1.0/(self.delta_f * self.tlen)
+        self.dtype = dtype
+        self.snr_threshold = snr_threshold
+        self.flow = low_frequency_cutoff
+        self.fhigh = high_frequency_cutoff
+        self.gpu_callback_method = gpu_callback_method
+        if (downsample_factor > 1) or use_cluster:
+            raise NotImplementedError("hierarchicical MF and clustering not implemented "
+                "for HM 2 filter search")
+        self.segments = segment_list
+        self.htilde_dom = dom_template_output
+        self.htilde_sub = sub_template_output
+
+
+        self.snr_mem_dom = zeros(self.tlen, dtype=self.dtype)
+        self.snr_mem_sub = zeros(self.tlen, dtype=self.dtype)
+        self.corr_mem_dom = zeros(self.tlen, dtype=self.dtype)
+        self.corr_mem_sub = zeros(self.tlen, dtype=self.dtype)
+        self.matched_filter_and_cluster = self.full_matched_filter_thresh_only
+
+        # Assuming analysis time is constant across templates and segments, also
+        # delta_f is constant across segments.
+        self.kmin, self.kmax = get_cutoff_indices(self.flow, self.fhigh,
+                                                    self.delta_f, self.tlen)
+
+        # Set up the correlation operations for each analysis segment
+        corr_slice = slice(self.kmin, self.kmax)
+        self.correlators_dom = []
+        self.correlators_sub = []
+        for seg in self.segments:
+            dom_corr = Correlator(self.htilde_dom[corr_slice],
+                                seg[corr_slice],
+                                self.corr_mem_dom[corr_slice])
+            sub_corr = Correlator(self.htilde_sub[corr_slice],
+                                seg[corr_slice],
+                                self.corr_mem_sub[corr_slice])
+            self.correlators_dom.append(dom_corr)
+            self.correlators_sub.append(sub_corr)
+
+        # setup up the ifft we will do
+        self.ifft_dom = IFFT(self.corr_mem_dom, self.snr_mem_dom)
+        self.ifft_sub = IFFT(self.corr_mem_sub, self.snr_mem_sub)
+
+    def full_matched_filter_thresh_only(self, segnum, dom_template_norm, 
+        sub_template_norm, window=None, epoch=None):
+        """ Returns the complex snr timeseries, normalization of the complex snr,
+        the correlation vector frequency series, the list of indices of the
+        triggers, and the snr values at the trigger locations. Returns empty
+        lists for these for points that are not above the threshold.
+
+        Calculated the matched filter, threshold, and cluster.
+
+        Parameters
+        ----------
+        segnum : int
+            Index into the list of segments at MatchedFilterControl construction
+            against which to filter.
+        dom_template_norm : float
+            The dominant template normalization factor.
+        sub_template_norm : float
+            The subdominant template normalization factor.
+        window : int
+            Size of the window over which to cluster triggers, in samples.
+            This is IGNORED by this function, and provided only for API compatibility.
+
+        Returns
+        -------
+        snr_dom : TimeSeries
+            A time series containing the dominant harmonic complex snr.
+        snr_sub : TimeSeries
+            A time series containing the subdom harmonic complex snr.
+        norm_dom : float
+            The normalization of the dominant harmonic complex snr.
+        norm_sub : float
+            The normalization of the subdom harmonic complex snr.
+        corrrelation_dom: FrequencySeries
+            A frequency series containing the dominant harmonic correlation vector.
+        corrrelation_sub: FrequencySeries
+            A frequency series containing the subdom harmonic correlation vector.
+        idx : Array
+            List of indices of the triggers above threshold.
+        snr_2_filt_rss : Array
+            The 2 harmonic root-sum-square snr values at the trigger locations.
+        """
+        norm_dom = (4.0 * self.delta_f) / dom_template_norm
+        norm_sub = (4.0 * self.delta_f) / sub_template_norm
+        self.correlators_dom[segnum].correlate()
+        self.correlators_sub[segnum].correlate()
+        self.ifft_dom.execute()
+        self.ifft_sub.execute()
+        
+        analyze = self.segments[segnum].analyze
+        snr_2_filter = (norm_dom * self.snr_mem_dom[analyze]**2 + 
+                        norm_sub * self.snr_mem_sub[analyze]**2) ** 0.5
+        idx, snr_2_filt_rss = events.threshold_only(snr_2_filter,
+                                          self.snr_threshold)
+        logging.info("%s points above threshold" % str(len(idx)))
+
+        snr_dom = TimeSeries(
+            self.snr_mem_dom, epoch=epoch, delta_t=self.delta_t, copy=False)
+        snr_sub = TimeSeries(
+            self.snr_mem_sub, epoch=epoch, delta_t=self.delta_t, copy=False)
+        corr_dom = FrequencySeries(
+            self.corr_mem_dom, delta_f=self.delta_f, copy=False)
+        corr_sub = FrequencySeries(
+            self.corr_mem_sub, delta_f=self.delta_f, copy=False)
+        return snr_dom, snr_sub, norm_dom, norm_sub, corr_dom, corr_sub, \
+            idx, snr_2_filt_rss
+
+
 def compute_max_snr_over_sky_loc_stat(hplus, hcross, hphccorr,
                                                       hpnorm=None, hcnorm=None,
                                                       out=None, thresh=0,
@@ -2094,6 +2247,7 @@ __all__ = ['match', 'optimized_match', 'matched_filter', 'sigmasq', 'sigma', 'ge
            'overlap_cplx', 'matched_filter_core', 'correlate',
            'MatchedFilterControl', 'LiveBatchMatchedFilter',
            'MatchedFilterSkyMaxControl', 'MatchedFilterSkyMaxControlNoPhase',
+           'MatchedFilterControlHM',
            'compute_max_snr_over_sky_loc_stat_no_phase',
            'compute_max_snr_over_sky_loc_stat',
            'compute_followup_snr_series',

@@ -1051,6 +1051,56 @@ def get_waveform_filter(out, template=None, **kwargs):
         raise ValueError("Approximant %s not available" %
                             (input_params['approximant']))
 
+def _mode_array_map(lm, approx):
+    '''Return the mode_array in pycbc.waveform format for requested mode.
+    FIXME: Something like this should live in lalsimulation / pycbc.waveform.
+
+    Parameters
+    ----------
+    lm: str, or list
+        Mode key e.g. '22', ["22", "33"]
+    approx: str
+        Waveform approximant.
+
+    Returns
+    -------
+    mode_array: list
+        PyCBC get_fd_waveform appropriate list of lm modes.
+    '''
+    mode_array_dict = {
+        '22' : [[2, 2], [2, -2]], '32' : [[3,2], [3, -2]],
+        '21' : [[2,1], [2, -1]], '44' : [[4, 4], [4, -4]],
+        '33' : [[3, 3], [3, -3]], '43' : [[4, 3], [4, -3]],
+        }
+    # don't include negative m modes in Cardiff Phenom models as will 
+    # throw an error - they are automatically added by these models anyway
+    if approx in ['IMRPhenomPv3HM', 'IMRPhenomHM']:
+        mode_array_idx = -1
+    else:
+        mode_array_idx = None
+
+    if isinstance(lm, (list, numpy.ndarray, numpy.generic)):
+        mode_array = []
+        for i_lm in lm:
+            for j_lm in mode_array_dict[i_lm][:mode_array_idx]:
+                mode_array.append(j_lm)
+    else:
+        mode_array = mode_array_dict[lm][:mode_array_idx]
+    return mode_array
+
+def get_lm_filters(out_dom, out_sub, template=None, dom_mode=None, 
+    sub_mode=None, **kwargs):
+    """Calls get_waveform_filter for dominant and subdominant lm multipoles
+    """
+    approx = kwargs["approximant"]
+    hp_dom = get_waveform_filter(out_dom, template,
+        mode_array=_mode_array_map(dom_mode, approx), 
+        inclination=numpy.pi/2, **kwargs)
+    hp_sub = get_waveform_filter(out_sub, template,
+        mode_array=_mode_array_map(sub_mode, approx), 
+        inclination=numpy.pi/2, **kwargs)
+    return hp_dom, hp_sub
+
 def td_waveform_to_fd_waveform(waveform, out=None, length=None,
                                buffer_length=100):
     """ Convert a time domain into a frequency domain waveform by FFT.
@@ -1241,4 +1291,5 @@ __all__ = ["get_td_waveform", "get_fd_waveform", "get_fd_waveform_sequence",
            "print_sgburst_approximants", "sgburst_approximants",
            "td_waveform_to_fd_waveform", "get_two_pol_waveform_filter",
            "NoWaveformError", "FailedWaveformError", "get_td_waveform_from_fd",
-           'cpu_fd', 'cpu_td', 'fd_sequence', '_filter_time_lengths']
+           'cpu_fd', 'cpu_td', 'fd_sequence', '_filter_time_lengths', 
+           "get_lm_filters"]
