@@ -489,8 +489,11 @@ class MatchedFilterControlHM(object):
             The minimum snr to return when filtering
         segment_list : list
             List of FrequencySeries that are the Fourier-transformed data segments
-        template_output : complex64
-            Array of memory given as the 'out' parameter to waveform.FilterBank
+        dom_template_output : complex64
+            Array of memory given as the 'out_dom' parameter to waveform.FilterBankHM
+        sub_template_output : dict
+            Array of memory given as the 'out_sub' or 'out_sub_perp' 
+            parameter to waveform.FilterBankHM
         use_cluster : boolean
             If true, cluster triggers above threshold using a window; otherwise,
             only apply a threshold.
@@ -602,7 +605,7 @@ class MatchedFilterControlHM(object):
         self.correlators_sub[segnum].correlate()
         self.ifft_dom.execute()
         self.ifft_sub.execute()
-        
+
         analyze = self.segments[segnum].analyze
         snr_2_filter = (norm_dom * self.snr_mem_dom[analyze]**2 + 
                         norm_sub * self.snr_mem_sub[analyze]**2) ** 0.5

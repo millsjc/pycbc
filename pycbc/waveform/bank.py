@@ -27,6 +27,7 @@ This module provides classes that describe banks of waveforms
 """
 import types
 import logging
+from math import sqrt
 import os.path
 import h5py
 from copy import copy
@@ -35,6 +36,7 @@ from ligo.lw import lsctables, utils as ligolw_utils
 import pycbc.waveform
 import pycbc.pnutils
 import pycbc.waveform.compress
+import pycbc.filter
 from pycbc import DYN_RANGE_FAC
 from pycbc.types import FrequencySeries, zeros
 import pycbc.io
@@ -1006,108 +1008,12 @@ class FilterBankHM(TemplateBank):
                 approximant=approximant, f_lower=f_low, f_final=f_end,
                 delta_f=self.delta_f, delta_t=self.delta_t, distance=distance,
                 **self.extra_args)
-
         hp_dom = self.attach_attributes(
             hp_dom, index, approximant, f_end, f_low, "template_duration")
         hp_sub = self.attach_attributes(
             hp_sub, index, approximant, f_end, f_low, "template_duration_sub")
         return hp_dom, hp_sub
 
-    def _orthogonalize_subdominant_harmonic(self, psd):
-        """
-        Orthogonalize the subdominant harmonic for a given PSD. 
-        Returns harmonic orthogonal to the dominant.
-        
-        Parameters
-        ----------
-        psd: pycbc.types.FrequencySeries 
-            psd to use
-        f_lower: float
-            Low frequency cutoff
-        fh: float
-            High frequency cutoff
-        dominant_mode: str
-            Loudest mode to orthogonalize w.r.t. e.g. "22"
-        subdom_modes: list
-            Other modes to be orthogonalized e.g. ["33", "44"]
-        
-        Returns
-        -------
-        h_perp: dict
-            Waveform modes orthogonal to the dominant mode
-        """
-        tempoutsub_perp = self.out_sub_perp
-        
-        if self.out_sub is None or self.out_dom is None:
-            raise ValueError("Shouldn't see this: by now self.out_dom/sub "
-                "should not be None.")
-        else:
-            h_dom = self.out_dom
-            h_sub = self.out_sub
-
-        f_end = (self.filter_length-1) * self.delta_f
-
-        # What does this do???
-        poke2 = tempoutsub_perp.data # pylint:disable=unused-variable
-
-        # Clear the storage memory
-        tempoutsub_perp.clear()
-
-        h_modes, psd=None, f_lower=20., fh=2048.0, dominant_mode='22', subdom_modes=["33"]
-                hp_dom, hp_sub = pycbc.waveform.get_lm_filters(
-                    tempoutdom[0:self.filter_length], 
-                    tempoutsub[0:self.filter_length], 
-            duration = get_waveform_filter_length_in_time(**input_params)
-            hp, _ = wav_gen[input_params['approximant']](duration=duration,
-                                                return_hc=False, **input_params)
-
-self.f_lower = low_frequency_cutoff
-self.delta_f = delta_f
-        if h_modes[dominant_mode].sigma > 0:
-            h_dom = h_modes[dominant_mode] / h_modes[dominant_mode].sigma
-            h_dom.sigma = h_modes[dominant_mode].sigma
-            h_dom.norm = h_dom.zeta = 1
-            h_perp = {dominant_mode: h_dom}
-            for lm in subdom_modes:
-                h_sub = h_modes[lm]
-                if h_sub.sigma > 0:
-                    h_sub /= h_sub.sigma
-                    # generate the orthogonal waveform
-                    zeta = pycbc.filter.overlap_cplx(h_dom, h_sub, psd=psd, 
-                        low_frequency_cutoff=f_lower, high_frequency_cutoff=fh, 
-                        normalized=False) 
-                    norm = 1 / (numpy.sqrt(1 - numpy.abs(zeta) ** 2))
-                    h_p_lm = (h_sub - zeta * h_dom) * norm
-                    h_p_lm.zeta = zeta
-                    h_p_lm.norm = norm
-                    h_p_lm.sigma = h_sub.sigma * norm
-                    h_perp[lm] = h_p_lm
-                else:
-                    print("No power in mode %s" % lm)
-                    h_perp[lm] = h
-                    h_perp[lm].sigma = 0
-        else:
-            print("No power in any mode, returning original waveform")
-            h_perp = h_modes
-
-        tempoutsub_perp[0:self.filter_length][0:len(h_sub)] = h_sub_perp
-        h_sub_perp.data = tempoutsub_perp
-        return h_perp
-
-
-        hp_dom, hp_sub = pycbc.waveform.get_lm_filters(
-            tempoutdom[0:self.filter_length], 
-            tempoutsub[0:self.filter_length], self.table[index],
-            self.dom_mode[index], self.sub_mode[index],
-            approximant=approximant, f_lower=f_low, f_final=f_end,
-            delta_f=self.delta_f, delta_t=self.delta_t, distance=distance,
-            **self.extra_args)
-
-        hp_dom = self.attach_attributes(
-            hp_dom, index, approximant, f_end, f_low, "template_duration")
-        hp_sub = self.attach_attributes(
-            hp_sub, index, approximant, f_end, f_low, "template_duration_sub")
-        return hp_dom, hp_sub
     def attach_attributes(self, htilde, index, approximant, f_end, f_low, duration_attr):
         # If available, record the total duration (which may
         # include ringdown) and the duration up to merger since they will be
@@ -1120,7 +1026,9 @@ self.delta_f = delta_f
 
         setattr(self.table[index], duration_attr, template_duration)
 
-        htilde = htilde.astype(self.dtype)
+        # comment out line below as want Frequency series for overlap in 
+        # orthogonalize_subdominant_harmonic 
+        # htilde = htilde.astype(self.dtype)
         htilde.f_lower = f_low
         htilde.min_f_lower = self.min_f_lower
         htilde.end_idx = int(f_end / htilde.delta_f)
@@ -1134,6 +1042,67 @@ self.delta_f = delta_f
         htilde.sigmasq = types.MethodType(sigma_cached, htilde)
         htilde._sigmasq = {}
         return htilde
+
+    def orthogonalize_subdominant_harmonic(self, psd, sigma_dom, sigma_sub, template_dom, template_sub):
+        """
+        Orthogonalize the subdominant harmonic for a given PSD. 
+        This modifies the array of memory 'out_sub_perp' parameter
+        given to FilterBankHM.
+        
+        Parameters
+        ----------
+        psd: pycbc.types.FrequencySeries 
+            psd to use in overlap.
+        sigma_dom: float
+            Norm of the dominant template.
+        sigma_sub: float
+            Norm of the subdominant template.
+        template_dom: float
+            Dominant harmonic tempalte.
+        template_sub: float
+            Subdominant harmonic tempalte.
+        
+        Returns
+        -------
+        sigma_sub_perp: float
+            Norm of the orthogonal subdominant template.
+        """
+        tempoutsub_perp = self.out_sub_perp
+        
+        if self.out_sub is None or self.out_dom is None:
+            raise ValueError("Shouldn't see this; self.out_dom shouldn't be None.")
+        else:
+            h_dom = self.out_dom[0:self.filter_length]
+            h_sub = self.out_sub[0:self.filter_length]
+
+        f_end = (self.filter_length-1) * self.delta_f
+
+        poke2 = tempoutsub_perp.data # pylint:disable=unused-variable
+        # Clear the storage memory
+        tempoutsub_perp.clear()
+
+        if sigma_dom > 0:
+            if sigma_sub > 0:
+                # generate the orthogonal waveform
+                zeta = pycbc.filter.overlap_cplx(template_dom, template_sub, 
+                    psd, self.f_lower, f_end, normalized=False)
+                zeta = zeta / sigma_dom / sigma_sub
+                norm = 1 / (sqrt(1 - abs(zeta) ** 2))
+                h_sub_perp = (h_sub / sigma_sub - zeta * h_dom / sigma_dom) * norm
+                sigma_sub_perp = sigma_sub * norm
+            else:
+                logging.info("No power in %s harmonic" % lm)
+                h_sub_perp = h_sub
+                sigma_sub_perp = 0
+        else:
+            logging.info("No power in any harmonic")
+            h_sub_perp = h_sub
+            sigma_sub_perp = 0
+
+        tempoutsub_perp[0:self.filter_length][0:len(h_sub_perp)] = h_sub_perp
+        h_sub_perp.data = tempoutsub_perp
+        return sigma_sub_perp
+
 
 __all__ = ('sigma_cached', 'boolargs_from_apprxstr', 'add_approximant_arg',
            'parse_approximant_arg', 'tuple_to_hash', 'TemplateBank',

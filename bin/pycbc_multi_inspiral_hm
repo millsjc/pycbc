@@ -25,6 +25,7 @@ import logging
 import time
 from collections import defaultdict
 import argparse
+from math import sqrt
 import numpy as np
 from pycbc import (
     detector, fft, init_logging, inject, opt, psd, scheme, strain, vetoes,
@@ -189,14 +190,14 @@ with ctx:
         'ifo': int, # IFO is stored as an int internally!
         'snr_dominant': complex64,
         'snr_subdominant': complex64,
-        # 'sigma_perp_sub': float32,
+        # 'sigma_sub_perp': float32,
         }
     ifo_out_vals = {
         'time_index': None,
         'ifo': None,
         'snr_dominant': None,
         'snr_subdominant': None,
-        # 'sigma_perp_sub': None,
+        # 'sigma_sub_perp': None,
         }
     ifo_names = sorted(ifo_out_vals.keys())
     network_out_types = {
@@ -254,11 +255,11 @@ with ctx:
             sigmasq_dom = {
                 ifo : template_dom.sigmasq(stilde[ifo].psd)
                 for ifo in args.instruments}
-            sigma_dom = {ifo : np.sqrt(sigmasq_dom[ifo]) for ifo in args.instruments}
+            sigma_dom = {ifo : sqrt(sigmasq_dom[ifo]) for ifo in args.instruments}
             sigmasq_sub = {
                 ifo : template_sub.sigmasq(stilde[ifo].psd)
                 for ifo in args.instruments}
-            sigma_sub = {ifo : np.sqrt(sigmasq_sub[ifo]) for ifo in args.instruments}
+            sigma_sub = {ifo : sqrt(sigmasq_sub[ifo]) for ifo in args.instruments}
             # Every time s_num is zero or we skip the segment, we run new 
             # template to increment the template index
             if s_num==0:
@@ -283,13 +284,14 @@ with ctx:
                 # No clustering until the end.
                 # The correlation vector is the FFT of the snr (so inverse
                 # FFT it to get the snr). 
-                sigma_perp_sub = bank._orthogonalize_subdominant_harmonic(
-                    matched_filter[ifo].segments[s_num].psd)
-                sigma_perp_sub_dict[ifo] = sigma_perp_sub
+                sigma_sub_perp = bank.orthogonalize_subdominant_harmonic(
+                    matched_filter[ifo].segments[s_num].psd, sigma_dom[ifo], sigma_sub[ifo],
+                    template_dom, template_sub)
+                sigma_sub_perp_dict[ifo] = sigma_sub_perp
                 snr_dom, snr_sub, norm_dom, norm_sub, corr_dom, corr_sub, \
                 ind, snr_2_filt_rss = \
                      matched_filter[ifo].matched_filter_and_cluster(
-                         s_num, sigma_dom[ifo], sigma_perp_sub, window=0)
+                         s_num, sigma_dom[ifo], sigma_sub_perp, window=0)
                 analyze = matched_filter[ifo].segments[s_num].analyze
                 snr_dom_dict[ifo] = (snr_dom[analyze] * norm_dom)
                 snr_sub_dict[ifo] = (snr_sub[analyze] * norm_sub)
