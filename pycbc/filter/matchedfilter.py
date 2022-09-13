@@ -607,8 +607,8 @@ class MatchedFilterControlHM(object):
         self.ifft_sub.execute()
 
         analyze = self.segments[segnum].analyze
-        snr_2_filter = (norm_dom * self.snr_mem_dom[analyze]**2 + 
-                        norm_sub * self.snr_mem_sub[analyze]**2) ** 0.5
+        snr_2_filter = ((norm_dom * self.snr_mem_dom[analyze])**2 + 
+                        (norm_sub * self.snr_mem_sub[analyze])**2) ** 0.5
         idx, snr_2_filt_rss = events.threshold_only(snr_2_filter,
                                           self.snr_threshold)
         logging.info("%s points above threshold" % str(len(idx)))
