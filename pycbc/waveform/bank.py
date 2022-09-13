@@ -1087,6 +1087,10 @@ class FilterBankHM(TemplateBank):
                 zeta = pycbc.filter.overlap_cplx(template_dom, template_sub, 
                     psd, self.f_lower, f_end, normalized=False)
                 zeta = zeta / sigma_dom / sigma_sub
+                if zeta>=1:
+                    logging.info(
+                        "zeta (overlap) is {}, setting to 0.999999999".format(abs(zeta)))
+                    zeta=0.999999999
                 norm = 1 / (sqrt(1 - abs(zeta) ** 2))
                 h_sub_perp = (h_sub / sigma_sub - zeta * h_dom / sigma_dom) * norm
                 sigma_sub_perp = sigma_sub * norm
