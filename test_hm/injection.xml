@@ -17,7 +17,7 @@
 		<Column Name="process:ifos" Type="lstring"/>
 		<Column Name="process:process_id" Type="int_8s"/>
 		<Stream Name="process:table" Type="Local" Delimiter=",">
-			"inspinj","94fe49765e514e86e4b2d53d546e574007737c6f","CLEAN: All modifications committed",1334084720," ",0,"condor1","5656",2153393,1340631759,1340631759,0,"lalapps","",0
+			"inspinj","94fe49765e514e86e4b2d53d546e574007737c6f","CLEAN: All modifications committed",1334084720," ",0,"HNB675.fritz.box","503",65274,1347022664,1347022664,0,"lalapps","",0
 		</Stream>
 	</Table>
 	<Table Name="process_params:table">
@@ -37,16 +37,16 @@
 			"inspinj",0,"--longitude","float","0.000000e+00",
 			"inspinj",0,"--latitude","float","0.000000e+00",
 			"inspinj",0,"--m-distr","string","fixMasses",
-			"inspinj",0,"--fixed-mass1","float","1.457423",
-			"inspinj",0,"--fixed-mass2","float","1.299302",
+			"inspinj",0,"--fixed-mass1","float","150.000000",
+			"inspinj",0,"--fixed-mass2","float","90.000000",
 			"inspinj",0,"--i-distr","string","fixed",
-			"inspinj",0,"--fixed-inc","float","0.000000e+00",
+			"inspinj",0,"--fixed-inc","float","1.047198e+00",
 			"inspinj",0,"--coa-phase-distr","string","fixed",
 			"inspinj",0,"--fixed-coa-phase","float","0.000000e+00",
 			"inspinj",0,"--polarization","float","0.000000e+00",
 			"inspinj",0,"--d-distr","string","uniform",
-			"inspinj",0,"--min-distance","float","4.000000e+04",
-			"inspinj",0,"--max-distance","float","4.000000e+04",
+			"inspinj",0,"--min-distance","float","3.000000e+06",
+			"inspinj",0,"--max-distance","float","3.000000e+06",
 			"inspinj",0,"--time-step","float","1.000000e+01",
 			"inspinj",0,"--output","string","injection.xml"
 		</Stream>
@@ -112,7 +112,7 @@
 		<Column Name="sim_inspiral:simulation_id" Type="int_8s"/>
 		<Stream Name="sim_inspiral:table" Type="Local" Delimiter=",">
 
-			0,"IMRPhenomDpseudoFourPN",1187008882,0,1187008881,988265145,1187008881,992419459,1187008882,12675058,1187008881,992445278,1187008882,15019590,40566.97322042206,"",1.457422971725464,1.299301981925964,1.197564005851746,0.2491775304079056,40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,0,62.06668090820312,71.57309722900391,59.62009429931641,77.79468536376953,         56.5477,0,0,"",0,"TAPER_NONE",0,0
+			0,"IMRPhenomDpseudoFourPN",1187008882,0,1187008881,988265145,1187008881,992419459,1187008882,12675058,1187008881,992445278,1187008882,15019590,40566.97322042206,"",150,90,100.4981384277344,0.234375,3000,0,0,1.047197580337524,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,0,9092.884765625,10454.90625,7555.59375,10760.6083984375,         7599.18,0,0,"",0,"TAPER_NONE",0,0
 		</Stream>
 	</Table>
 </LIGO_LW>
