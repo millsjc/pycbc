@@ -12,3 +12,4 @@ docs/Makefile
 PyCBC.egg-info
 test_hm/playground/.ipynb_checkpoints/*
 test_hm/TESTING-4096.hdf
+test_hm/frames/*
