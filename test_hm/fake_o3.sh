@@ -2,17 +2,17 @@ pycbc_multi_inspiral_hm --fake-strain "zeroNoise" --allow-zero-padding \
 --injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOaLIGOO3LowT1800545 \
 --channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \
---gps-start-time 1187008500 --gps-end-time 1187009100 \
---strain-high-pass 15 --sample-rate 4096 \
---segment-length 512 --segment-start-pad 144 \
---segment-end-pad 16 --allow-zero-padding  --taper-data 1 \
+--gps-start-time 1187008870 --gps-end-time 1187008886 \
+--strain-high-pass 15 --sample-rate 512 \
+--segment-length 16 --segment-start-pad 4 \
+--segment-end-pad 2 --allow-zero-padding  --taper-data 1 \
 --low-frequency-cutoff 20 \
 --approximant 'IMRPhenomHM:mtotal<4' 'IMRPhenomHM:else' \
 --order -1 --snr-threshold 4. --cluster-window 0 \
 --processing-scheme cpu \
---output TESTING-4096.hdf \
+--output TESTING-512.hdf \
 --instruments H1 L1 V1 \
---bank-file GW170817_PyGRB_template.hdf \
---coinc-threshold 7.0 --ra 3.446131227771 \
---dec -0.40812483499946 --trigger-time 1187008884 \
+--bank-file GW190521_template.hdf \
+--coinc-threshold 7.0 --ra 0 \
+--dec 0 --trigger-time 1187008882 \
 --verbose
