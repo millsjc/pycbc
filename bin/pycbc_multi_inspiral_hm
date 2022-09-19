@@ -25,7 +25,7 @@ import logging
 import time
 from collections import defaultdict
 import argparse
-from math import sqrt
+from math import sqrt, ceil
 import numpy as np
 from pycbc import (
     detector, fft, init_logging, inject, opt, psd, scheme, strain, vetoes,
@@ -34,6 +34,8 @@ from pycbc import (
 from pycbc.events import ranking, EventManagerHM, hm_utils
 from pycbc.filter import MatchedFilterControlHM
 from pycbc.types import zeros, float32, complex64
+from numba import njit
+import pdb
 # from pycbc.vetoes import sgchisq
 time_init = time.time()
 parser = argparse.ArgumentParser(description=__doc__)
@@ -233,10 +235,37 @@ with ctx:
     if not len(bank) == n_bank:
         n_bank = len(bank)
         logging.info("Template bank size after thinning: %d", n_bank)
+    
+    ## new code starts
+    n_ifos = len(args.instruments)
+    if n_ifos != 3:
+        raise NotImplementedError("currently only implemented 3 detector triggers.")
+    ifo1 = detector.Detector(args.instruments[0])
+    ifo2 = detector.Detector(args.instruments[1])
+    ifo3 = detector.Detector(args.instruments[2])
+    time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
+    time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
+    timing_error = 0.1 # FIXME: pass as argument
+    t2_coinc_window = int(ceil(time_diff_12 * (1+timing_error) * sample_rate))
+    t3_coinc_window = int(ceil(time_diff_13 * (1+timing_error) * sample_rate))
+    if t2_coinc_window > t3_coinc_window:
+        raise NotImplementedError(
+            "t2_coinc_window must be larger than t3_coinc window.")
+    logging.info("pre-calculating a subset of possible coincident combinations.")
+    # FIXME: add a condition like below to check the data is long enough 
+    # for the indices to make sense.
+    # if not 2*(t3_coinc_window+1) > analysed_len:
+        # raise NotImplementedError("len of analyzed data must be at least as large as")
+    precalculated_idxs = hm_utils.get_indices_jit(
+        2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window)
+    logging.info("finished pre-calculating a subset of possible coincident combinations.")
+    ## new code ends
+
     # Loop over templates
     for t_num, (template_dom, template_sub) in enumerate(bank):
         # Loop over segments
         for s_num,stilde in enumerate(segments[args.instruments[0]]):
+            print("s_num={}, start-end:{}-{}".format(s_num, stilde.start_time, stilde.end_time))
             stilde = {ifo : segments[ifo][s_num] for ifo in args.instruments}
             # Filter check checks the 'inj_filter_rejector' options to
             # determine whether to filter this template/segment 
@@ -276,6 +305,7 @@ with ctx:
             corr_dom_dict = dict.fromkeys(args.instruments)
             corr_sub_dict = dict.fromkeys(args.instruments)
             idx = dict.fromkeys(args.instruments)
+            snr_2_filt_rss_above_thresh_dict = dict.fromkeys(args.instruments)
             snr_2_filt_rss_dict = dict.fromkeys(args.instruments)
             ifo_list = args.instruments[:]
             for ifo in args.instruments:
@@ -289,10 +319,19 @@ with ctx:
                     template_dom, template_sub)
                 sigma_sub_perp_dict[ifo] = sigma_sub_perp
                 snr_dom, snr_sub, norm_dom, norm_sub, corr_dom, corr_sub, \
-                ind, snr_2_filt_rss = \
+                ind, snr_2_filt_rss_above_thresh, snr_2_filt_rss = \
                      matched_filter[ifo].matched_filter_and_cluster(
-                         s_num, sigma_dom[ifo], sigma_sub_perp, window=0)
+                         s_num, sigma_dom[ifo], sub_template_norm=1, window=0)
+                         # above we assume the orthoganlized template is 
+                         # normalized. Check this.
                 analyze = matched_filter[ifo].segments[s_num].analyze
+                _aa =abs(snr_dom[analyze] * norm_dom)
+                _i = np.argmax(_aa)
+                print("max snr dom: {}".format(_aa[_i]))
+                print("max snr sub: {}".format(abs(snr_sub[analyze] * norm_sub)[_i]))
+                print("sigma_dom: {}".format(sigma_dom[ifo]))
+                print("sigma_sub_perp: {}".format(sigma_sub_perp))
+                print("sigma_sub: {}".format(sigma_sub[ifo]))
                 snr_dom_dict[ifo] = (snr_dom[analyze] * norm_dom)
                 snr_sub_dict[ifo] = (snr_sub[analyze] * norm_sub)
                 norm_dom_dict[ifo] = norm_dom
@@ -300,9 +339,23 @@ with ctx:
                 corr_dom_dict[ifo] = corr_dom.copy()
                 corr_sub_dict[ifo] = corr_sub.copy()
                 idx[ifo] = ind.copy()
+                snr_2_filt_rss_above_thresh_dict[ifo] = snr_2_filt_rss_above_thresh.copy()
                 snr_2_filt_rss_dict[ifo] = snr_2_filt_rss.copy()
+            # pdb.set_trace()
             # Move onto next segment if there are no triggers.
             if len(ifo_list)==0: continue
+            # START new looping code here
+            logging.info("calculating network rss 2 filter snr and thresholding")
+            network_snr_2_filter_rss, det_idx = hm_utils.three_det_sum_and_threshold(
+                snr_2_filt_rss_dict[ifo1.name],
+                snr_2_filt_rss_dict[ifo2.name],
+                snr_2_filt_rss_dict[ifo3.name],
+                t2_coinc_window, t3_coinc_window,
+                args.coinc_threshold,
+                precalculated_idxs=precalculated_idxs)
+            logging.info("finished calculating network snr and thresholding")
+            # END new looping code here
+            pdb.set_trace()
             # Save the indexes of triggers (if we have any)
             # Even if we have none, need to keep an empty dictionary.
             # Only do this is idx doesn't get time shifted out of the time
@@ -390,6 +443,7 @@ with ctx:
                 event_mgr.add_template_events_to_network(
                     network_names,
                     [network_out_vals[n] for n in network_names])
+                # pdb.set_trace()
         # Now cluster
         if args.cluster_method == "window":
             cluster_window = int(args.cluster_window * sample_rate)

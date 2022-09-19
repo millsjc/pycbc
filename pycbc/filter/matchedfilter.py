@@ -559,7 +559,7 @@ class MatchedFilterControlHM(object):
         self.ifft_sub = IFFT(self.corr_mem_sub, self.snr_mem_sub)
 
     def full_matched_filter_thresh_only(self, segnum, dom_template_norm, 
-        sub_template_norm, window=None, epoch=None):
+        sub_template_norm=1, window=None, epoch=None):
         """ Returns the complex snr timeseries, normalization of the complex snr,
         the correlation vector frequency series, the list of indices of the
         triggers, and the snr values at the trigger locations. Returns empty
@@ -600,6 +600,8 @@ class MatchedFilterControlHM(object):
             The 2 harmonic root-sum-square snr values at the trigger locations.
         """
         norm_dom = (4.0 * self.delta_f) / dom_template_norm
+        #usually sub_template_norm is 1 as it is normalized when orthogonalizing.
+        #FIXME: insert a check in pycbc_multi_inspiral_hm to check this is indeed the case.
         norm_sub = (4.0 * self.delta_f) / sub_template_norm
         self.correlators_dom[segnum].correlate()
         self.correlators_sub[segnum].correlate()
@@ -607,9 +609,15 @@ class MatchedFilterControlHM(object):
         self.ifft_sub.execute()
 
         analyze = self.segments[segnum].analyze
-        snr_2_filter = ((norm_dom * self.snr_mem_dom[analyze])**2 + 
-                        (norm_sub * self.snr_mem_sub[analyze])**2) ** 0.5
-        idx, snr_2_filt_rss = events.threshold_only(snr_2_filter,
+        snr_2_filter_rss = (
+            norm_dom * self.snr_mem_dom[analyze] * self.snr_mem_dom[analyze].conj() + \
+            norm_sub * self.snr_mem_sub[analyze] * self.snr_mem_sub[analyze].conj()
+        )
+
+        # rho_2_filt = abs(np.sqrt(np.sum(
+        #     snr_dom_array * snr_dom_array.conj() + 
+        #     snr_sub_array * snr_sub_array.conj(), axis=0)))
+        idx, snr_2_filt_rss_above_thresh = events.threshold_only(snr_2_filter_rss,
                                           self.snr_threshold)
         logging.info("%s points above threshold" % str(len(idx)))
 
@@ -622,7 +630,7 @@ class MatchedFilterControlHM(object):
         corr_sub = FrequencySeries(
             self.corr_mem_sub, delta_f=self.delta_f, copy=False)
         return snr_dom, snr_sub, norm_dom, norm_sub, corr_dom, corr_sub, \
-            idx, snr_2_filt_rss
+            idx, snr_2_filt_rss_above_thresh, snr_2_filter_rss
 
 
 def compute_max_snr_over_sky_loc_stat(hplus, hcross, hphccorr,

@@ -956,7 +956,7 @@ class FilterBankHM(TemplateBank):
             parameters=parameters, **kwds)
         self.ensure_standard_filter_columns(low_frequency_cutoff=low_frequency_cutoff)
         self.dom_mode = ["22"]*len(self.table)
-        self.sub_mode = ["22"]*len(self.table)
+        self.sub_mode = ["33"]*len(self.table)
         # Create a template duration field for subdominant harmonic
         self.table = self.table.add_fields(np.zeros(len(self.table),
                                     dtype=np.float32), 'template_duration_sub')
@@ -1093,7 +1093,7 @@ class FilterBankHM(TemplateBank):
                     zeta=0.999999999
                 norm = 1 / (sqrt(1 - abs(zeta) ** 2))
                 h_sub_perp = (h_sub / sigma_sub - zeta * h_dom / sigma_dom) * norm
-                sigma_sub_perp = sigma_sub * norm
+                sigma_sub_perp = sigma_sub / norm
             else:
                 logging.info("No power in %s harmonic" % lm)
                 h_sub_perp = h_sub
