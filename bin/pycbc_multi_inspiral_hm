@@ -110,6 +110,7 @@ t_gps = args.trigger_time
 # the same order.
 ifo_list = args.instruments
 ifo_list.sort()
+nifo = len(ifo_list)
 strain.verify_strain_options_multi_ifo(args, parser, ifo_list)
 strain.StrainSegments.verify_segment_options_multi_ifo(
         args, parser, ifo_list)
@@ -218,7 +219,7 @@ with ctx:
         'snr_subdominant': None,
         # 'sigma_sub_perp': None,
         }
-    ifo_names = sorted(ifo_out_vals.keys())
+    ifo_out_names = sorted(ifo_out_vals.keys())
     network_out_types = {
         'time_index': int,
         'snr_2_filter_rss': float32,
@@ -233,8 +234,8 @@ with ctx:
         }
     network_names = sorted(network_out_vals.keys())
     event_mgr = EventManagerHM(
-        args, ifo_list, ifo_names,
-        [ifo_out_types[n] for n in ifo_names], network_names,
+        args, ifo_list, ifo_out_names,
+        [ifo_out_types[n] for n in ifo_out_names], network_names,
         [network_out_types[n] for n in network_names])
     logging.info("Read in template bank")
     bank = waveform.FilterBankHM(
@@ -327,6 +328,7 @@ with ctx:
                 # No clustering until the end.
                 # The correlation vector is the FFT of the snr (so inverse
                 # FFT it to get the snr).
+                logging.info("Orthogonalizing subdominant harmonic")
                 template_sub_perp, sigma_sub_perp = \
                     bank.orthogonalize_subdominant_harmonic(
                         matched_filter[ifo].segments[s_num].psd, 
@@ -371,8 +373,23 @@ with ctx:
                 snr_2_filt_rss_dict[ifo3.name],
                 idx_combinations,
                 args.coinc_threshold)
-            logging.info("Finished calculating network snr and thresholding.")
+            logging.info("Finished calculating rss snr and thresholding.")
+            logging.info("{} ({}%) possible coincs are above threshold".format(
+                len(det_idx), 100 * float(len(det_idx)) / len(idx_combinations)))
+            if len(det_idx):
+                logging.info("Calculating final stat and thresholding.")
+                network_snr_2_filter, det_idx, mask = hm_utils.snr_2_filter_and_threshold(
+                    np.array([snr_dom_dict[ifo] for ifo in ifo_list]),
+                    np.array([snr_sub_dict[ifo] for ifo in ifo_list]),
+                    det_idx,
+                    args.coinc_threshold)
+                logging.info("Finished calculating final stat and thresholding.")
+                logging.info("{} ({}%) possible coincs are above threshold".format(
+                    len(det_idx), 100 * float(len(det_idx)) / len(idx_combinations)))
+            pdb.set_trace()
             # END new looping code here
+
+
 
             # Save the indexes of triggers (if we have any)
             # Even if we have none, need to keep an empty dictionary.
@@ -396,8 +413,6 @@ with ctx:
                     - time_delay_idx[ifo_list[0]]
                     )
             logging.info("Found %d coincident triggers", len(coinc_idx))
-            # Number of ifos
-            nifo = len(ifo_list)
             for ifo in ifo_list:
                 # Move on if this segment has no data
                 if len(snr_dom_dict[ifo])==0:
@@ -450,18 +465,17 @@ with ctx:
                     ifo_out_vals['ifo'] = (
                         [event_mgr.ifo_dict[ifo]] * num_events)
                     event_mgr.add_template_events_to_ifo(
-                        ifo, ifo_names, [ifo_out_vals[n] for n in ifo_names])
+                        ifo, ifo_out_names, [ifo_out_vals[n] for n in ifo_out_names])
 
                 network_out_vals['snr_2_filter_rss'] = np.real(rho_2_filter_rss)
                 # FIXME: update below
                 network_out_vals['snr_2_filter'] = np.real(rho_2_filter)
-                network_out_vals['time_index'] = (
-                    coinc_idx + stilde[ifo].cumulative_index)
+                # network_out_vals['time_index'] = (
+                #     coinc_idx + stilde[ifo].cumulative_index)
                 network_out_vals['nifo'] = [nifo] * num_events
                 event_mgr.add_template_events_to_network(
                     network_names,
                     [network_out_vals[n] for n in network_names])
-                # pdb.set_trace()
         pdb.set_trace()
         # Now cluster
         if args.cluster_method == "window":

@@ -609,10 +609,9 @@ class MatchedFilterControlHM(object):
         self.ifft_sub.execute()
 
         analyze = self.segments[segnum].analyze
-        snr_2_filter_rss = (
-            norm_dom * self.snr_mem_dom[analyze] * self.snr_mem_dom[analyze].conj() + \
-            norm_sub * self.snr_mem_sub[analyze] * self.snr_mem_sub[analyze].conj()
-        )
+        snr_2_filter_rss = numpy.sqrt(
+            abs(norm_dom * self.snr_mem_dom[analyze])**2 + \
+            abs(norm_sub * self.snr_mem_sub[analyze])**2)
 
         # rho_2_filt = abs(np.sqrt(np.sum(
         #     snr_dom_array * snr_dom_array.conj() + 

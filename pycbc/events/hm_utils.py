@@ -101,7 +101,7 @@ def snr_2_filter(snr_dict_dom, snr_dict_sub, index, threshold, time_delay_idx):
     snr_sub_array = np.array(
         [coinc_triggers_sub[ifo] for ifo in coinc_triggers_sub.keys()]
     )
-    rho_2_filt = abs(np.sqrt(np.sum(
+    rho_2_filt = np.real(np.sqrt(np.sum(
         snr_dom_array * snr_dom_array.conj() + 
         snr_sub_array * snr_sub_array.conj(), axis=0)))
     # Apply threshold
@@ -187,7 +187,7 @@ def get_i_j_k(coinc_idx, N, t2_coinc_window, t3_coinc_window, precalculated_idxs
             i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + N - (2*t3_coinc_window + 2)
     return i, j, k
 
-def return_coinc_indices(N, t2_coinc_window, t3_coinc_window):
+def index_combinations(N, t2_coinc_window, t3_coinc_window):
     if 2*max(t2_coinc_window, t3_coinc_window) > N:
         raise NotImplementedError("analyzed time must be larger than "
             "the coincident window")
@@ -244,22 +244,22 @@ def return_coinc_indices(N, t2_coinc_window, t3_coinc_window):
 #         for _i in coinc_idx])
 #     return np.sqrt(network_snr_sq[mask]), det_idx
 
-def three_det_sum_and_threshold(
-    t1, t2, t3, idx, threshold
-):
-    # FIXME: have to convert to numpy so that numba can interpret. 
-    # Find another way if it's desirable to save memory.
-    t1 = t1.numpy()
-    t1 = np.real(t1 * t1.conj())
-    t2 = t2.numpy()
-    t2 = np.real(t1 * t1.conj())
-    t3 = t3.numpy()
-    t3 = np.real(t1 * t1.conj())
-
-    network_snr_sq = three_det_sum_idx_jit(t1, t2, t3, idx)
+def three_det_sum_and_threshold(t1, t2, t3, idx, threshold):
+    network_snr_sq = three_det_sum_idx_jit(abs(t1.numpy())**2, 
+        abs(t2.numpy())**2, abs(t3.numpy())**2, idx)
     mask = network_snr_sq > threshold**2
-    n_above_thresh = sum(mask)
-    logging.info("{} ({}%) possible coincs are above threshold".format(
-        n_above_thresh, 100 * float(n_above_thresh) / len(mask)
-    ))
     return np.sqrt(network_snr_sq[mask]), idx[mask]
+
+def inner_complex(a, b):
+    """Assumes a 2D array of detector SNRs where zeroth index selects a detector."""
+    return abs(np.sum(a * b.conjugate(), axis=0))
+
+def snr_2_filter_and_threshold(snr_dom, snr_sub_perp, idx, threshold):
+    nifos = len(snr_dom)
+    dom = np.array([snr_dom[i][idx[:,i]] for i in range(nifos)])
+    sub = np.array([snr_sub_perp[i][idx[:,i]] for i in range(nifos)])
+    network_rho_dom = np.linalg.norm(dom, axis=0)
+    network_rho_sub_perp = inner_complex(dom, sub) / network_rho_dom
+    snr_2_filter = np.sqrt(network_rho_sub_perp**2 + network_rho_dom**2)
+    mask = snr_2_filter > threshold
+    return snr_2_filter[mask], idx[mask], mask
