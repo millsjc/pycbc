@@ -1051,7 +1051,7 @@ def get_waveform_filter(out, template=None, **kwargs):
         raise ValueError("Approximant %s not available" %
                             (input_params['approximant']))
 
-def _mode_array_map(lm, approx):
+def mode_array_map(lm, approx):
     '''Return the mode_array in pycbc.waveform format for requested mode.
     FIXME: Something like this should live in lalsimulation / pycbc.waveform.
 
@@ -1094,12 +1094,55 @@ def get_lm_filters(out_dom, out_sub, template=None, dom_mode=None,
     """
     approx = kwargs["approximant"]
     hp_dom = get_waveform_filter(out_dom, template,
-        mode_array=_mode_array_map(dom_mode, approx), 
+        mode_array=mode_array_map(dom_mode, approx), 
         inclination=numpy.pi/2, **kwargs)
     hp_sub = get_waveform_filter(out_sub, template,
-        mode_array=_mode_array_map(sub_mode, approx), 
+        mode_array=mode_array_map(sub_mode, approx), 
         inclination=numpy.pi/2, **kwargs)
     return hp_dom, hp_sub
+
+def orthogonalize_subdominant_harmonic(
+    psd, sigma_dom, sigma_sub, htilde_dom, htilde_sub, f_lower, f_end):
+    """
+    Parameters
+    ----------
+    psd: pycbc.types.FrequencySeries
+    sigma_dom: float
+    sigma_sub: float
+    htilde_dom: pycbc.types.FrequencySeries
+    htilde_sub: pycbc.types.FrequencySeries
+    f_lower: float
+    f_end: float
+
+    Returns
+    -------
+    htilde_sub_perp: pycbc.types.FrequencySeries
+    sigma_sub_perp: float
+    """
+    if (sigma_sub > 0)&(sigma_dom > 0):
+        # generate the orthogonal waveform
+        zeta = pycbc.filter.overlap_cplx(htilde_dom, htilde_sub, 
+            psd, f_lower, f_end, normalized=False)
+        zeta = zeta / sigma_dom / sigma_sub
+        if abs(zeta)>=1:
+            if numpy.isclose(abs(zeta), 1, rtol=1e-05, atol=1e-08):
+                htilde_sub_perp = htilde_sub.copy()
+                htilde_sub_perp.data = numpy.zeros_like(htilde_sub_perp)
+                sigma_sub_perp = 0
+            else:
+                raise ValueError(
+                    "overlap is greater than 1, this shouldn't be "
+                    "possible. overlap:{}".format(abs(zeta)))
+        else:
+            norm = 1 / (numpy.sqrt(1 - abs(zeta) ** 2))
+            htilde_sub_perp = (
+                htilde_sub / sigma_sub - zeta * htilde_dom / sigma_dom) 
+            htilde_sub_perp *= norm
+            sigma_sub_perp = sigma_sub / norm
+    else:
+        htilde_sub_perp = htilde_sub
+        sigma_sub_perp = 0
+    return htilde_sub_perp,sigma_sub_perp
 
 def td_waveform_to_fd_waveform(waveform, out=None, length=None,
                                buffer_length=100):
@@ -1292,4 +1335,6 @@ __all__ = ["get_td_waveform", "get_fd_waveform", "get_fd_waveform_sequence",
            "td_waveform_to_fd_waveform", "get_two_pol_waveform_filter",
            "NoWaveformError", "FailedWaveformError", "get_td_waveform_from_fd",
            'cpu_fd', 'cpu_td', 'fd_sequence', '_filter_time_lengths', 
-           "get_lm_filters"]
+           "get_lm_filters", "orthogonalize_subdominant_harmonic",
+           "mode_array_map",
+           ]

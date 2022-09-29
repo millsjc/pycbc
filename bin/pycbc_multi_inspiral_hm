@@ -108,26 +108,42 @@ init_logging(args.verbose)
 t_gps = args.trigger_time
 # Put the ifos in alphabetical order so they are always called in
 # the same order.
-args.instruments.sort()
-strain.verify_strain_options_multi_ifo(args, parser, args.instruments)
+ifo_list = args.instruments
+ifo_list.sort()
+strain.verify_strain_options_multi_ifo(args, parser, ifo_list)
 strain.StrainSegments.verify_segment_options_multi_ifo(
-        args, parser, args.instruments)
-psd.verify_psd_options_multi_ifo(args, parser, args.instruments)
+        args, parser, ifo_list)
+psd.verify_psd_options_multi_ifo(args, parser, ifo_list)
 scheme.verify_processing_options(args, parser)
 fft.verify_fft_options(args, parser)
 inj_filter_rejector = inject.InjFilterRejector.from_cli_multi_ifos(
-    args, args.instruments)
+    args, ifo_list)
 strain_dict = strain.from_cli_multi_ifos(
-    args, args.instruments, inj_filter_rejector, dyn_range_fac=DYN_RANGE_FAC)
+    args, ifo_list, inj_filter_rejector, dyn_range_fac=DYN_RANGE_FAC)
 strain_segments_dict = strain.StrainSegments.from_cli_multi_ifos(
-    args, strain_dict, args.instruments)
+    args, strain_dict, ifo_list)
+
+# Check all analyzed segments are the same length
+# FIXME: remove this requirement when the index_combinations code
+# is updated to handle different lengths.
+analyze_slices = []
+for ifo in ifo_list:
+    analyze_slices.extend(strain_segments_dict[ifo].analyze_slices)
+unique_slices = np.unique(analyze_slices)
+if len(unique_slices) > 1:
+    raise ValueError("analyze segment slices must be the same "
+        "length, but are: {}".format(unique_slices))
+analyze_len = unique_slices[0].stop - unique_slices[0].start
+
+# Check finished.
+
 ctx = scheme.from_cli(args)
 with ctx:
     fft.from_cli(args)
     # Set some often used variables for easy access
     flow = args.low_frequency_cutoff
     flow_dict = defaultdict(lambda : flow)
-    for count, ifo in enumerate(args.instruments):
+    for count, ifo in enumerate(ifo_list):
         if count == 0:
             sample_rate = strain_dict[ifo].sample_rate
             sample_rate_dict = defaultdict(lambda : sample_rate)
@@ -150,11 +166,11 @@ with ctx:
     logging.info("Making frequency-domain data segments")
     segments = {
         ifo: strain_segments_dict[ifo].fourier_segments()
-        for ifo in args.instruments
+        for ifo in ifo_list
         }
     del strain_segments_dict
     psd.associate_psds_to_multi_ifo_segments(
-        args, segments, strain_dict, flen, delta_f, flow, args.instruments,
+        args, segments, strain_dict, flen, delta_f, flow, ifo_list,
         dyn_range_factor=DYN_RANGE_FAC, precision='single')
     # Currently we are using the same matched-filter parameters for all
     # ifos. Therefore only one MatchedFilterControl needed. Maybe this can
@@ -165,7 +181,7 @@ with ctx:
     template_mem_sub_perp = zeros(tlen, dtype=complex64)
     # Calculate time delay to each detector
     time_delay_idx = {}
-    for ifo in args.instruments:
+    for ifo in ifo_list:
         dt = detector.Detector(ifo).time_delay_from_earth_center(
             args.ra, args.dec, t_gps)
         time_delay_idx[ifo] = int(round(dt * sample_rate))
@@ -182,9 +198,10 @@ with ctx:
             downsample_factor=args.downsample_factor,
             upsample_threshold=args.upsample_threshold,
             upsample_method=args.upsample_method, cluster_function='symmetric')
-        for ifo in args.instruments}
+        for ifo in ifo_list}
+
     logging.info("Overwhitening frequency-domain data segments")
-    for ifo in args.instruments:
+    for ifo in ifo_list:
         for seg in segments[ifo]:
             seg /= seg.psd
     ifo_out_types = {
@@ -216,7 +233,7 @@ with ctx:
         }
     network_names = sorted(network_out_vals.keys())
     event_mgr = EventManagerHM(
-        args, args.instruments, ifo_names,
+        args, ifo_list, ifo_names,
         [ifo_out_types[n] for n in ifo_names], network_names,
         [network_out_types[n] for n in network_names])
     logging.info("Read in template bank")
@@ -230,19 +247,19 @@ with ctx:
     n_bank = len(bank)
     nfilters = 0
     logging.info("Full template bank size: %d", n_bank)
-    for ifo in args.instruments:
+    for ifo in ifo_list:
         bank.template_thinning(inj_filter_rejector[ifo])
     if not len(bank) == n_bank:
         n_bank = len(bank)
         logging.info("Template bank size after thinning: %d", n_bank)
     
     ## new code starts
-    n_ifos = len(args.instruments)
+    n_ifos = len(ifo_list)
     if n_ifos != 3:
         raise NotImplementedError("currently only implemented 3 detector triggers.")
-    ifo1 = detector.Detector(args.instruments[0])
-    ifo2 = detector.Detector(args.instruments[1])
-    ifo3 = detector.Detector(args.instruments[2])
+    ifo1 = detector.Detector(ifo_list[0])
+    ifo2 = detector.Detector(ifo_list[1])
+    ifo3 = detector.Detector(ifo_list[2])
     time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
     time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
     timing_error = 0.1 # FIXME: pass as argument
@@ -251,27 +268,23 @@ with ctx:
     if t2_coinc_window > t3_coinc_window:
         raise NotImplementedError(
             "t2_coinc_window must be larger than t3_coinc window.")
-    logging.info("pre-calculating a subset of possible coincident combinations.")
-    # FIXME: add a condition like below to check the data is long enough 
-    # for the indices to make sense.
-    # if not 2*(t3_coinc_window+1) > analysed_len:
-        # raise NotImplementedError("len of analyzed data must be at least as large as")
-    precalculated_idxs = hm_utils.get_indices_jit(
-        2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window)
-    logging.info("finished pre-calculating a subset of possible coincident combinations.")
+    logging.info("Calculating possible coincident combinations.")
+    idx_combinations = hm_utils.index_combinations(
+        analyze_len, t2_coinc_window, t3_coinc_window)
+    logging.info("Finished calculating possible coincident combinations.")
     ## new code ends
 
+    n_segments = len(segments[ifo_list[0]])
     # Loop over templates
     for t_num, (template_dom, template_sub) in enumerate(bank):
         # Loop over segments
-        for s_num,stilde in enumerate(segments[args.instruments[0]]):
-            print("s_num={}, start-end:{}-{}".format(s_num, stilde.start_time, stilde.end_time))
-            stilde = {ifo : segments[ifo][s_num] for ifo in args.instruments}
+        for s_num in range(n_segments):
+            stilde = {ifo : segments[ifo][s_num] for ifo in ifo_list}
             # Filter check checks the 'inj_filter_rejector' options to
             # determine whether to filter this template/segment 
             # if injections are present.
             analyse_segment = True
-            for ifo in args.instruments:
+            for ifo in ifo_list:
                 if not inj_filter_rejector[ifo].template_segment_checker(
                         bank, t_num, stilde[ifo]):
                     logging.info(
@@ -283,12 +296,12 @@ with ctx:
             # normalised
             sigmasq_dom = {
                 ifo : template_dom.sigmasq(stilde[ifo].psd)
-                for ifo in args.instruments}
-            sigma_dom = {ifo : sqrt(sigmasq_dom[ifo]) for ifo in args.instruments}
+                for ifo in ifo_list}
+            sigma_dom = {ifo : sqrt(sigmasq_dom[ifo]) for ifo in ifo_list}
             sigmasq_sub = {
                 ifo : template_sub.sigmasq(stilde[ifo].psd)
-                for ifo in args.instruments}
-            sigma_sub = {ifo : sqrt(sigmasq_sub[ifo]) for ifo in args.instruments}
+                for ifo in ifo_list}
+            sigma_sub = {ifo : sqrt(sigmasq_sub[ifo]) for ifo in ifo_list}
             # Every time s_num is zero or we skip the segment, we run new 
             # template to increment the template index
             if s_num==0:
@@ -297,26 +310,28 @@ with ctx:
             if not analyse_segment: continue
             logging.info(
                 "Analyzing segment %d/%d", s_num + 1, len(segments[ifo]))
-            sigma_sub_perp_dict = dict.fromkeys(args.instruments)
-            snr_dom_dict = dict.fromkeys(args.instruments)
-            snr_sub_dict = dict.fromkeys(args.instruments)
-            norm_dom_dict = dict.fromkeys(args.instruments)
-            norm_sub_dict = dict.fromkeys(args.instruments)
-            corr_dom_dict = dict.fromkeys(args.instruments)
-            corr_sub_dict = dict.fromkeys(args.instruments)
-            idx = dict.fromkeys(args.instruments)
-            snr_2_filt_rss_above_thresh_dict = dict.fromkeys(args.instruments)
-            snr_2_filt_rss_dict = dict.fromkeys(args.instruments)
-            ifo_list = args.instruments[:]
-            for ifo in args.instruments:
+            sigma_sub_perp_dict = dict.fromkeys(ifo_list)
+            snr_dom_dict = dict.fromkeys(ifo_list)
+            snr_sub_dict = dict.fromkeys(ifo_list)
+            norm_dom_dict = dict.fromkeys(ifo_list)
+            norm_sub_dict = dict.fromkeys(ifo_list)
+            corr_dom_dict = dict.fromkeys(ifo_list)
+            corr_sub_dict = dict.fromkeys(ifo_list)
+            idx = dict.fromkeys(ifo_list)
+            snr_2_filt_rss_above_thresh_dict = dict.fromkeys(ifo_list)
+            snr_2_filt_rss_dict = dict.fromkeys(ifo_list)
+            n_single_trigs = 0
+            for ifo in ifo_list:
                 logging.info(
                     "Filtering template %d/%d, ifo %s", t_num + 1, n_bank, ifo)
                 # No clustering until the end.
                 # The correlation vector is the FFT of the snr (so inverse
-                # FFT it to get the snr). 
-                sigma_sub_perp = bank.orthogonalize_subdominant_harmonic(
-                    matched_filter[ifo].segments[s_num].psd, sigma_dom[ifo], sigma_sub[ifo],
-                    template_dom, template_sub)
+                # FFT it to get the snr).
+                template_sub_perp, sigma_sub_perp = \
+                    bank.orthogonalize_subdominant_harmonic(
+                        matched_filter[ifo].segments[s_num].psd, 
+                        sigma_dom[ifo], sigma_sub[ifo],
+                        template_dom, template_sub)
                 sigma_sub_perp_dict[ifo] = sigma_sub_perp
                 snr_dom, snr_sub, norm_dom, norm_sub, corr_dom, corr_sub, \
                 ind, snr_2_filt_rss_above_thresh, snr_2_filt_rss = \
@@ -324,7 +339,9 @@ with ctx:
                          s_num, sigma_dom[ifo], sub_template_norm=1, window=0)
                          # above we assume the orthoganlized template is 
                          # normalized. Check this.
+                # pdb.set_trace()
                 analyze = matched_filter[ifo].segments[s_num].analyze
+                print("analyze: {}".format(analyze))
                 _aa =abs(snr_dom[analyze] * norm_dom)
                 _i = np.argmax(_aa)
                 print("max snr dom: {}".format(_aa[_i]))
@@ -340,22 +357,23 @@ with ctx:
                 corr_sub_dict[ifo] = corr_sub.copy()
                 idx[ifo] = ind.copy()
                 snr_2_filt_rss_above_thresh_dict[ifo] = snr_2_filt_rss_above_thresh.copy()
+                n_single_trigs += len(snr_2_filt_rss_above_thresh)
                 snr_2_filt_rss_dict[ifo] = snr_2_filt_rss.copy()
             # pdb.set_trace()
             # Move onto next segment if there are no triggers.
-            if len(ifo_list)==0: continue
+            if n_single_trigs==0: continue
+
             # START new looping code here
-            logging.info("calculating network rss 2 filter snr and thresholding")
+            logging.info("Calculating network rss 2 filter snr and thresholding.")
             network_snr_2_filter_rss, det_idx = hm_utils.three_det_sum_and_threshold(
                 snr_2_filt_rss_dict[ifo1.name],
                 snr_2_filt_rss_dict[ifo2.name],
                 snr_2_filt_rss_dict[ifo3.name],
-                t2_coinc_window, t3_coinc_window,
-                args.coinc_threshold,
-                precalculated_idxs=precalculated_idxs)
-            logging.info("finished calculating network snr and thresholding")
+                idx_combinations,
+                args.coinc_threshold)
+            logging.info("Finished calculating network snr and thresholding.")
             # END new looping code here
-            pdb.set_trace()
+
             # Save the indexes of triggers (if we have any)
             # Even if we have none, need to keep an empty dictionary.
             # Only do this is idx doesn't get time shifted out of the time
@@ -366,21 +384,21 @@ with ctx:
                     idx[ifo] - time_delay_idx[ifo] < len(snr_dom_dict[ifo])
                     )
                 ]
-                for ifo in args.instruments}
+                for ifo in ifo_list}
             # Find triggers that are coincident (in geocent time) in
             # multiple ifos. If a single ifo analysis then just use the
             # indexes from that ifo.
-            if len(args.instruments) > 1:
+            if len(ifo_list) > 1:
                 coinc_idx = hm_utils.get_coinc_indexes(idx_dict, time_delay_idx)
             else:
                 coinc_idx = (
-                    idx_dict[args.instruments[0]]
-                    - time_delay_idx[args.instruments[0]]
+                    idx_dict[ifo_list[0]]
+                    - time_delay_idx[ifo_list[0]]
                     )
             logging.info("Found %d coincident triggers", len(coinc_idx))
             # Number of ifos
-            nifo = len(args.instruments)
-            for ifo in args.instruments:
+            nifo = len(ifo_list)
+            for ifo in ifo_list:
                 # Move on if this segment has no data
                 if len(snr_dom_dict[ifo])==0:
                     raise RuntimeError(
@@ -389,7 +407,7 @@ with ctx:
                 # Time delay is applied to indices
                 coinc_idx_det_frame = {
                     ifo: coinc_idx + time_delay_idx[ifo]
-                    for ifo in args.instruments}
+                    for ifo in ifo_list}
             # Calculate the coincident 2 filter snr
             # Check we have data first
             if len(coinc_idx) != 0:
@@ -413,15 +431,15 @@ with ctx:
                 # to coinc_idx above
                 coinc_idx_det_frame = {
                     ifo: coinc_idx + time_delay_idx[ifo]
-                    for ifo in args.instruments}
+                    for ifo in ifo_list}
                 snr_dom_ifo_trigs = {
                     ifo: snr_dom_dict[ifo][coinc_idx_det_frame[ifo]]
-                    for ifo in args.instruments}
+                    for ifo in ifo_list}
                 snr_sub_ifo_trigs = {
                     ifo: snr_sub_dict[ifo][coinc_idx_det_frame[ifo]]
-                    for ifo in args.instruments}
+                    for ifo in ifo_list}
                 num_events = len(coinc_idx)
-                for ifo in args.instruments:
+                for ifo in ifo_list:
                     ifo_out_vals['time_index'] = (
                         coinc_idx_det_frame[ifo] + stilde[ifo].cumulative_index
                         )
@@ -444,6 +462,7 @@ with ctx:
                     network_names,
                     [network_out_vals[n] for n in network_names])
                 # pdb.set_trace()
+        pdb.set_trace()
         # Now cluster
         if args.cluster_method == "window":
             cluster_window = int(args.cluster_window * sample_rate)

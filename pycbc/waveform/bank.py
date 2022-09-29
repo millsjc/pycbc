@@ -1043,7 +1043,8 @@ class FilterBankHM(TemplateBank):
         htilde._sigmasq = {}
         return htilde
 
-    def orthogonalize_subdominant_harmonic(self, psd, sigma_dom, sigma_sub, template_dom, template_sub):
+    def orthogonalize_subdominant_harmonic(
+        self, psd, sigma_dom, sigma_sub, template_dom, template_sub):
         """
         Orthogonalize the subdominant harmonic for a given PSD. 
         This modifies the array of memory 'out_sub_perp' parameter
@@ -1057,10 +1058,10 @@ class FilterBankHM(TemplateBank):
             Norm of the dominant template.
         sigma_sub: float
             Norm of the subdominant template.
-        template_dom: float
-            Dominant harmonic tempalte.
-        template_sub: float
-            Subdominant harmonic tempalte.
+        template_dom: pycbc.types.FrequencySeries
+            Dominant harmonic template.
+        template_sub: pycbc.types.FrequencySeries
+            Subdominant harmonic template.
         
         Returns
         -------
@@ -1070,7 +1071,8 @@ class FilterBankHM(TemplateBank):
         tempoutsub_perp = self.out_sub_perp
         
         if self.out_sub is None or self.out_dom is None:
-            raise ValueError("Shouldn't see this; self.out_dom shouldn't be None.")
+            raise ValueError(
+                "Shouldn't see this; self.out_dom shouldn't be None.")
         else:
             h_dom = self.out_dom[0:self.filter_length]
             h_sub = self.out_sub[0:self.filter_length]
@@ -1080,32 +1082,17 @@ class FilterBankHM(TemplateBank):
         poke2 = tempoutsub_perp.data # pylint:disable=unused-variable
         # Clear the storage memory
         tempoutsub_perp.clear()
+        htilde_sub_perp, sigma_sub_perp = \
+            pycbc.waveform.orthogonalize_subdominant_harmonic(psd, sigma_dom, 
+                sigma_sub, template_dom, template_sub, self.f_lower, f_end)
 
-        if sigma_dom > 0:
-            if sigma_sub > 0:
-                # generate the orthogonal waveform
-                zeta = pycbc.filter.overlap_cplx(template_dom, template_sub, 
-                    psd, self.f_lower, f_end, normalized=False)
-                zeta = zeta / sigma_dom / sigma_sub
-                if zeta>=1:
-                    logging.info(
-                        "zeta (overlap) is {}, setting to 0.999999999".format(abs(zeta)))
-                    zeta=0.999999999
-                norm = 1 / (sqrt(1 - abs(zeta) ** 2))
-                h_sub_perp = (h_sub / sigma_sub - zeta * h_dom / sigma_dom) * norm
-                sigma_sub_perp = sigma_sub / norm
-            else:
-                logging.info("No power in %s harmonic" % lm)
-                h_sub_perp = h_sub
-                sigma_sub_perp = 0
-        else:
-            logging.info("No power in any harmonic")
-            h_sub_perp = h_sub
-            sigma_sub_perp = 0
-
-        tempoutsub_perp[0:self.filter_length][0:len(h_sub_perp)] = h_sub_perp
-        h_sub_perp.data = tempoutsub_perp
-        return sigma_sub_perp
+        tempoutsub_perp[0:self.filter_length] = htilde_sub_perp
+        htilde_sub_perp.data = tempoutsub_perp
+        if sigma_sub <= 0:
+            logging.info("No power in sub-dominant harmonic")
+        if sigma_dom <= 0:
+            logging.info("No power in dominant harmonic")
+        return htilde_sub_perp, sigma_sub_perp
 
 
 __all__ = ('sigma_cached', 'boolargs_from_apprxstr', 'add_approximant_arg',
