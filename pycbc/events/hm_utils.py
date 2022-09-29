@@ -188,6 +188,7 @@ def get_i_j_k(coinc_idx, N, t2_coinc_window, t3_coinc_window, precalculated_idxs
     return i, j, k
 
 def index_combinations(N, t2_coinc_window, t3_coinc_window):
+    """This messy funciton is equivalent to calling ..."""
     if 2*max(t2_coinc_window, t3_coinc_window) > N:
         raise NotImplementedError("analyzed time must be larger than "
             "the coincident window")
@@ -263,3 +264,15 @@ def snr_2_filter_and_threshold(snr_dom, snr_sub_perp, idx, threshold):
     snr_2_filter = np.sqrt(network_rho_sub_perp**2 + network_rho_dom**2)
     mask = snr_2_filter > threshold
     return snr_2_filter[mask], idx[mask], mask
+
+def maximal_coinc_in_ifo(snrs, det_idx, ifo_i=0):
+    """Choose the maximum network snr for each time point in ifo_i 
+    (defaults to the zeroth detector)."""
+    i_max = []
+    j_start, j_end = 0, 0
+    for c in np.unique(det_idx[:,0], return_counts=True)[1]:
+        j_end += c
+        i_max.append(np.argmax(snrs[j_start:j_end]) + j_start )
+        j_start += c
+    i_max = np.array(i_max)
+    return snrs[i_max], det_idx[i_max]

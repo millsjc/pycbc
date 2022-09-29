@@ -376,6 +376,7 @@ with ctx:
             logging.info("Finished calculating rss snr and thresholding.")
             logging.info("{} ({}%) possible coincs are above threshold".format(
                 len(det_idx), 100 * float(len(det_idx)) / len(idx_combinations)))
+
             if len(det_idx):
                 logging.info("Calculating final stat and thresholding.")
                 network_snr_2_filter, det_idx, mask = hm_utils.snr_2_filter_and_threshold(
@@ -386,10 +387,15 @@ with ctx:
                 logging.info("Finished calculating final stat and thresholding.")
                 logging.info("{} ({}%) possible coincs are above threshold".format(
                     len(det_idx), 100 * float(len(det_idx)) / len(idx_combinations)))
-            pdb.set_trace()
+
+                logging.info("Finding the maximum stat value for each time "
+                    "point in {}".format(ifo_list[0]))
+                snr_2_filter, det_idx = hm_utils.maximal_coinc_in_ifo(
+                    network_snr_2_filter, det_idx)
+                logging.info("{} unique times in {} have coincident triggers"
+                    "".format(len(det_idx), ifo_list[0]))
+            # pdb.set_trace()
             # END new looping code here
-
-
 
             # Save the indexes of triggers (if we have any)
             # Even if we have none, need to keep an empty dictionary.
@@ -476,7 +482,7 @@ with ctx:
                 event_mgr.add_template_events_to_network(
                     network_names,
                     [network_out_vals[n] for n in network_names])
-        pdb.set_trace()
+        # pdb.set_trace()
         # Now cluster
         if args.cluster_method == "window":
             cluster_window = int(args.cluster_window * sample_rate)
