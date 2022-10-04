@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2014 Alex Nitz
+# Copyright (C) 2022 Cameron Mills
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -123,20 +123,8 @@ strain_dict = strain.from_cli_multi_ifos(
     args, ifo_list, inj_filter_rejector, dyn_range_fac=DYN_RANGE_FAC)
 strain_segments_dict = strain.StrainSegments.from_cli_multi_ifos(
     args, strain_dict, ifo_list)
-
-# Check all analyzed segments are the same length
-# FIXME: remove this requirement when the index_combinations code
-# is updated to handle different lengths.
-analyze_slices = []
-for ifo in ifo_list:
-    analyze_slices.extend(strain_segments_dict[ifo].analyze_slices)
-unique_slices = np.unique(analyze_slices)
-if len(unique_slices) > 1:
-    raise ValueError("analyze segment slices must be the same "
-        "length, but are: {}".format(unique_slices))
-analyze_len = unique_slices[0].stop - unique_slices[0].start
-
-# Check finished.
+analyze_slices = strain_segments_dict[ifo_list[0]].analyze_slices
+analyze_lengths = [asl.stop - asl.start for asl in analyze_slices]
 
 ctx = scheme.from_cli(args)
 with ctx:
@@ -269,12 +257,13 @@ with ctx:
     if t2_coinc_window > t3_coinc_window:
         raise NotImplementedError(
             "t2_coinc_window must be larger than t3_coinc window.")
+    index_dtype = hm_utils.get_index_array_dtype(tlen)
     logging.info("Calculating possible coincident combinations.")
-    idx_combinations = hm_utils.index_combinations(
-        analyze_len, t2_coinc_window, t3_coinc_window)
+    idx_combinations = {a_len: hm_utils.index_combinations(a_len, t2_coinc_window, 
+        t3_coinc_window, index_dtype) for a_len in np.unique(analyze_lengths)}
     logging.info("Finished calculating possible coincident combinations.")
+    # pdb.set_trace()
     ## new code ends
-
     n_segments = len(segments[ifo_list[0]])
     # Loop over templates
     for t_num, (template_dom, template_sub) in enumerate(bank):
@@ -341,7 +330,6 @@ with ctx:
                          s_num, sigma_dom[ifo], sub_template_norm=1, window=0)
                          # above we assume the orthoganlized template is 
                          # normalized. Check this.
-                # pdb.set_trace()
                 analyze = matched_filter[ifo].segments[s_num].analyze
                 print("analyze: {}".format(analyze))
                 _aa =abs(snr_dom[analyze] * norm_dom)
@@ -361,7 +349,6 @@ with ctx:
                 snr_2_filt_rss_above_thresh_dict[ifo] = snr_2_filt_rss_above_thresh.copy()
                 n_single_trigs += len(snr_2_filt_rss_above_thresh)
                 snr_2_filt_rss_dict[ifo] = snr_2_filt_rss.copy()
-            # pdb.set_trace()
             # Move onto next segment if there are no triggers.
             if n_single_trigs==0: continue
 
@@ -371,11 +358,12 @@ with ctx:
                 snr_2_filt_rss_dict[ifo1.name],
                 snr_2_filt_rss_dict[ifo2.name],
                 snr_2_filt_rss_dict[ifo3.name],
-                idx_combinations,
+                idx_combinations[analyze_lengths[s_num]],
                 args.coinc_threshold)
             logging.info("Finished calculating rss snr and thresholding.")
+            n_combinations = len(idx_combinations[analyze_lengths[s_num]])
             logging.info("{} ({}%) possible coincs are above threshold".format(
-                len(det_idx), 100 * float(len(det_idx)) / len(idx_combinations)))
+                len(det_idx), 100 * float(len(det_idx)) / n_combinations))
 
             if len(det_idx):
                 logging.info("Calculating final stat and thresholding.")
@@ -386,7 +374,7 @@ with ctx:
                     args.coinc_threshold)
                 logging.info("Finished calculating final stat and thresholding.")
                 logging.info("{} ({}%) possible coincs are above threshold".format(
-                    len(det_idx), 100 * float(len(det_idx)) / len(idx_combinations)))
+                    len(det_idx), 100 * float(len(det_idx)) / n_combinations))
 
                 logging.info("Finding the maximum stat value for each time "
                     "point in {}".format(ifo_list[0]))
@@ -394,7 +382,7 @@ with ctx:
                     network_snr_2_filter, det_idx)
                 logging.info("{} unique times in {} have coincident triggers"
                     "".format(len(det_idx), ifo_list[0]))
-            # pdb.set_trace()
+                logging.info("Max snr 2 filter = %.2f", max(snr_2_filter))
             # END new looping code here
 
             # Save the indexes of triggers (if we have any)
@@ -462,7 +450,7 @@ with ctx:
                 num_events = len(coinc_idx)
                 for ifo in ifo_list:
                     ifo_out_vals['time_index'] = (
-                        coinc_idx_det_frame[ifo] + stilde[ifo].cumulative_index
+                        np.int64(coinc_idx_det_frame[ifo]) + stilde[ifo].cumulative_index
                         )
                     ifo_out_vals['snr_dominant'] = snr_dom_ifo_trigs[ifo]
                     # FIXME: update below
@@ -472,7 +460,7 @@ with ctx:
                         [event_mgr.ifo_dict[ifo]] * num_events)
                     event_mgr.add_template_events_to_ifo(
                         ifo, ifo_out_names, [ifo_out_vals[n] for n in ifo_out_names])
-
+                pdb.set_trace()
                 network_out_vals['snr_2_filter_rss'] = np.real(rho_2_filter_rss)
                 # FIXME: update below
                 network_out_vals['snr_2_filter'] = np.real(rho_2_filter)
@@ -482,7 +470,6 @@ with ctx:
                 event_mgr.add_template_events_to_network(
                     network_names,
                     [network_out_vals[n] for n in network_names])
-        # pdb.set_trace()
         # Now cluster
         if args.cluster_method == "window":
             cluster_window = int(args.cluster_window * sample_rate)
