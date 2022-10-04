@@ -1,12 +1,8 @@
 """ This module contains functions for calculating and manipulating higher harmonic
 2-filter triggers.
 """
-import logging
-import numpy, numpy.random
-import pycbc.waveform, pycbc.filter, pycbc.types, pycbc.psd, pycbc.fft, pycbc.conversions
 import numpy as np
 from numba import njit
-
 
 # FIXME: remove the following three functions and replace with coincident search functions.
 def get_coinc_indexes(idx_dict, time_delay_idx):
@@ -132,14 +128,21 @@ def three_det_sum_idx_jit(t1, t2, t3, idx):
                 ])
     return temp
 
+def get_index_array_dtype(max_index):
+    # reduce the size of the index array where possible
+    bits_dtypes = [(8, np.uint8), (16, np.uint16), (32, np.uint32), (64, np.uint64)]
+    for bits, dtype in bits_dtypes: 
+        if 2**bits > max_index: break
+    return dtype
+
 @njit
-def get_indices_jit(N, t2_coinc_window, t3_coinc_window):
+def get_indices_jit(N, t2_coinc_window, t3_coinc_window, dtype=np.int64):
     idx = np.array([
         [i,j,k]
             for i in range(N)
                 for j in range(max(i-t2_coinc_window, 0), min(N, i+t2_coinc_window+1))
                     for k in range(max(i-t3_coinc_window, 0), min(N, i+t3_coinc_window+1))
-                ])
+                ], dtype=dtype)
     return idx
 
 def number_tail(t2_coinc_window, t3_coinc_window):
@@ -187,26 +190,26 @@ def get_i_j_k(coinc_idx, N, t2_coinc_window, t3_coinc_window, precalculated_idxs
             i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + N - (2*t3_coinc_window + 2)
     return i, j, k
 
-def index_combinations(N, t2_coinc_window, t3_coinc_window):
-    """This messy funciton is equivalent to calling ..."""
+def index_combinations(N, t2_coinc_window, t3_coinc_window, dtype=np.int64):
+    """This messy function is equivalent to calling get_indices_jit, but is 
+    generally faster."""
     if 2*max(t2_coinc_window, t3_coinc_window) > N:
-        raise NotImplementedError("analyzed time must be larger than "
-            "the coincident window")
+        return get_indices_jit(N, t2_coinc_window, t3_coinc_window, dtype)
     # forgetting the tails at first
     largest_window = max(t2_coinc_window, t3_coinc_window)
-    idx_1_mid = np.arange(N - 2*(t3_coinc_window+1)).repeat( \
+    idx_1_mid = np.arange(N - 2*(t3_coinc_window+1), dtype=dtype).repeat( \
         (2*t2_coinc_window+1)*(2*t3_coinc_window+1) \
     ) + largest_window + 1
     idx_2_mid = idx_1_mid + np.tile(
-        np.arange(-t2_coinc_window, t2_coinc_window+1).repeat(2*t3_coinc_window+1), 
+        np.arange(-t2_coinc_window, t2_coinc_window+1, dtype=dtype).repeat(2*t3_coinc_window+1), 
         (N - 2*(t3_coinc_window+1))
     )
     idx_3_mid = idx_1_mid + np.tile(
-        np.arange(-t3_coinc_window, t3_coinc_window+1), 
+        np.arange(-t3_coinc_window, t3_coinc_window+1, dtype=dtype), 
         (N - 2*(t3_coinc_window+1)) * (2*t2_coinc_window+1)
     )
     idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit(
-        2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window).T
+        2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window, dtype=dtype).T
     # now get the tails
     n_start = int(len(idx_1_ends) / 2)
     idx_1 = np.concatenate((idx_1_ends[:n_start], idx_1_mid, idx_1_ends[-n_start:] + N - (2*t3_coinc_window + 2)))
