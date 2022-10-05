@@ -4,118 +4,75 @@
 import numpy as np
 from numba import njit
 
-# FIXME: remove the following three functions and replace with coincident search functions.
-def get_coinc_indexes(idx_dict, time_delay_idx):
-    """Return the indexes corresponding to coincident triggers
-
+def angle_between_detectors(tau_12, tau_13, tau_23):
+    """Calculate the angle between ifo2 and ifo3 viewed from ifo1.
+    
     Parameters
     ----------
-    idx_dict: dict
-        Dictionary of indexes of triggers above threshold in each
-        detector
-    time_delay_idx: dict
-        Dictionary giving time delay index (time_delay*sample_rate) for
-        each ifo
+    tau_12: float
+        Light travel time between ifo1 and ifo2 (arbitrary units).
+    tau_13: float
+        Light travel time between ifo1 and ifo3 (arbitrary units).
+    tau_23: float
+        Light travel time between ifo2 and ifo3 (arbitrary units).
 
     Returns
     -------
-    coinc_idx: list
-        List of indexes for triggers in geocent time that appear in
-        multiple detectors
+    alpha_23: float
+        Angle (in radians) between ifo2 and ifo3 viewed from ifo1.
     """
-    coinc_list = np.array([], dtype=int)
-    for ifo in idx_dict.keys():
-        # Create list of indexes above threshold in single detector in geocent
-        # time. Can then search for triggers that appear in multiple detectors
-        # later.
-        if len(idx_dict[ifo]) != 0:
-            coinc_list = np.hstack(
-                [coinc_list, idx_dict[ifo] - time_delay_idx[ifo]]
-            )
-    # Search through coinc_idx for repeated indexes. These must have been loud
-    # in at least 2 detectors.
-    counts = np.unique(coinc_list, return_counts=True)
-    coinc_idx = counts[0][counts[1] > 1]
-    return coinc_idx
+    b, a, c = tau_12, tau_13, tau_23
+    alpha_23 = np.arccos((a**2 + b**2 - c**2) / (2*a*b))
+    return alpha_23
 
-
-def get_coinc_triggers(snrs, idx, t_delay_idx):
-    """Returns the coincident triggers from the longer SNR timeseries
-
+def check_time_delay_is_physical(
+    n2, n3, N2, N3, alpha_23, rounding=True):
+    """Check if the delay time between two detector combinations
+    is geometrically possible. The units for time are arbritrary 
+    but must be consistent. However if using rounding units must be 
+    time indices. 
+    
     Parameters
     ----------
-    snrs: dict
-        Dictionary of single detector SNR time series
-    idx: list
-        List of geocentric time indexes of coincident triggers
-    t_delay_idx: dict
-        Dictionary of indexes corresponding to light travel time from
-        geocenter for each detector
-
+    n2: float or array
+        Delay time between ifo1 and ifo2.
+    n3: float or array
+        Delay time between ifo1 and ifo2.
+    N2: float
+        Light travel time between ifo1 and ifo2.
+    N3: float
+        Light travel time between ifo1 and ifo3.
+    alpha_23: float
+        Angle (in radians) between ifo2 and ifo3 viewed from ifo1.
+    rounding: bool
+        If True will include the point just outside the geometrical 
+        region in the physical region.
+        
     Returns
-    -------
-    coincs: dict
-        Dictionary of coincident trigger SNRs in each detector
+    cond: bool, or boolean array
+        False if delay times are unphysical. 
     """
-    coincs = {ifo: snrs[ifo][idx + t_delay_idx[ifo]] for ifo in snrs}
-    return coincs
-
-
-def snr_2_filter(snr_dict_dom, snr_dict_sub, index, threshold, time_delay_idx):
-    """Calculate the 2 filter SNR for all coincident triggers above
-    threshold
-
-    Parameters
-    ----------
-    snr_dict: dict
-        Dictionary of individual detector SNRs
-    index: list
-        List of indexes (geocentric) for which to calculate coincident
-        SNR
-    threshold: float
-        Coincident SNR threshold. Triggers below this are cut
-    time_delay_idx: dict
-        Dictionary of time delay from geocenter in indexes for each
-        detector
-
-    Returns
-    -------
-    rho_2_filt: numpy.ndarray
-        Coincident 2 filter SNR for surviving triggers
-    index: list
-        The subset of input indexes corresponding to triggers that
-        survive the cuts
-    """
-    # Restrict the snr timeseries to just the interesting points
-    coinc_triggers_dom = get_coinc_triggers(snr_dict_dom, index, time_delay_idx)
-    coinc_triggers_sub = get_coinc_triggers(snr_dict_sub, index, time_delay_idx)
-    # Calculate the coincident snr
-
-    snr_dom_array = np.array(
-        [coinc_triggers_dom[ifo] for ifo in coinc_triggers_dom.keys()]
-    )
-    snr_sub_array = np.array(
-        [coinc_triggers_sub[ifo] for ifo in coinc_triggers_sub.keys()]
-    )
-    rho_2_filt = np.real(np.sqrt(np.sum(
-        snr_dom_array * snr_dom_array.conj() + 
-        snr_sub_array * snr_sub_array.conj(), axis=0)))
-    # Apply threshold
-    thresh_indexes = rho_2_filt > threshold
-    index = index[thresh_indexes]
-    # coinc_triggers = get_coinc_triggers(snr_dict, index, time_delay_idx)
-    rho_2_filt = rho_2_filt[thresh_indexes]
-    rho_2_filt_rss = rho_2_filt
-    return rho_2_filt, rho_2_filt_rss, index
+    N3 = float(N3)
+    p = N3 / N2 * np.cos(alpha_23)
+    q = N3 / N2 * np.sin(alpha_23)
+    if rounding:
+        # below line ensures we take the dots just outside 
+        # the ellipse to be safe and account for rounding
+        # FIXME: revise below
+        n2_safe = n2 - np.sign(n2)*0.1
+        n3_safe = n3 - np.sign(n3)*0.1
+    # Eq 3.4 for the ellipse from https://arxiv.org/pdf/gr-qc/9509042.pdf
+    cond = n3_safe**2 + n2_safe**2*(N3/N2)**2 - 2*p*n2_safe*n3_safe < (q*N2)**2
+    return cond
 
 @njit 
 def three_det_sum_jit(t1, t2, t3, t2_coinc_window, t3_coinc_window):
-    N = len(t1)
+    tlen = len(t1)
     network_snr_sq = np.array([
         t1[i] + t2[j] + t3[k]
-            for i in range(N)
-                for j in range(max(i-t2_coinc_window, 0), min(N, i+t2_coinc_window+1))
-                    for k in range(max(i-t3_coinc_window, 0), min(N, i+t3_coinc_window+1))
+            for i in range(tlen)
+                for j in range(max(i-t2_coinc_window, 0), min(tlen, i+t2_coinc_window+1))
+                    for k in range(max(i-t3_coinc_window, 0), min(tlen, i+t3_coinc_window+1))
                 ])
     return network_snr_sq
 
@@ -132,16 +89,16 @@ def get_index_array_dtype(max_index):
     # reduce the size of the index array where possible
     bits_dtypes = [(8, np.uint8), (16, np.uint16), (32, np.uint32), (64, np.uint64)]
     for bits, dtype in bits_dtypes: 
-        if 2**bits > max_index: break
+        if 2**bits > max_index+1: break
     return dtype
 
 @njit
-def get_indices_jit(N, t2_coinc_window, t3_coinc_window, dtype=np.int64):
+def get_indices_jit(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
     idx = np.array([
         [i,j,k]
-            for i in range(N)
-                for j in range(max(i-t2_coinc_window, 0), min(N, i+t2_coinc_window+1))
-                    for k in range(max(i-t3_coinc_window, 0), min(N, i+t3_coinc_window+1))
+            for i in range(tlen)
+                for j in range(max(i-t2_coinc_window, 0), min(tlen, i+t2_coinc_window+1))
+                    for k in range(max(i-t3_coinc_window, 0), min(tlen, i+t3_coinc_window+1))
                 ], dtype=dtype)
     return idx
 
@@ -156,20 +113,20 @@ def number_tail(t2_coinc_window, t3_coinc_window):
     )
     return n_tail
 
-def number_coincident_combinations(N, t2_coinc_window, t3_coinc_window):
-    """Assumes t3_coinc_window>t2_coinc_window, and N is the number of time samples."""
+def number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window):
+    """Assumes t3_coinc_window>t2_coinc_window, and tlen is the number of time samples."""
     n_tail = number_tail(t2_coinc_window, t3_coinc_window)
-    n_middle = (N - 2*(t3_coinc_window+1)) * (2 * t2_coinc_window + 1) * (2 * t3_coinc_window + 1) 
+    n_middle = (tlen - 2*(t3_coinc_window+1)) * (2 * t2_coinc_window + 1) * (2 * t3_coinc_window + 1) 
     n_c = 2 * n_tail + n_middle
     return n_c
 
-def get_i_j_k(coinc_idx, N, t2_coinc_window, t3_coinc_window, precalculated_idxs=None):
+def get_i_j_k(coinc_idx, tlen, t2_coinc_window, t3_coinc_window, precalculated_idxs=None):
     """Get the indices i,j,k of the detector timeseries corresponding to 
     coincident index coinc_idx. Assumes t3_coinc_window>t2_coinc_window, 
-    and N is the number of analyzed time samples."""
+    and tlen is the number of analyzed time samples."""
     if coinc_idx < 0:
         raise ValueError("indices cannot be negative.")
-    n_c = number_coincident_combinations(N, t2_coinc_window, t3_coinc_window)
+    n_c = number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window)
     n_tail = number_tail(t2_coinc_window, t3_coinc_window)
     largest_window = max(t2_coinc_window, t3_coinc_window)
     if (coinc_idx > n_tail-1)&(coinc_idx < n_c-n_tail):
@@ -187,70 +144,40 @@ def get_i_j_k(coinc_idx, N, t2_coinc_window, t3_coinc_window, precalculated_idxs
             i, j, k = precalculated_idxs[coinc_idx]
         else:
             # at the end
-            i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + N - (2*t3_coinc_window + 2)
+            i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + tlen - (2*t3_coinc_window + 2)
     return i, j, k
 
-def index_combinations(N, t2_coinc_window, t3_coinc_window, dtype=np.int64):
+def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
     """This messy function is equivalent to calling get_indices_jit, but is 
     generally faster."""
-    if 2*max(t2_coinc_window, t3_coinc_window) > N:
-        return get_indices_jit(N, t2_coinc_window, t3_coinc_window, dtype)
+    if 2*max(t2_coinc_window, t3_coinc_window) > tlen:
+        return get_indices_jit(tlen, t2_coinc_window, t3_coinc_window, dtype)
     # forgetting the tails at first
     largest_window = max(t2_coinc_window, t3_coinc_window)
-    idx_1_mid = np.arange(N - 2*(t3_coinc_window+1), dtype=dtype).repeat( \
+    idx_1_mid = np.arange(tlen - 2*(t3_coinc_window+1), dtype=dtype).repeat( \
         (2*t2_coinc_window+1)*(2*t3_coinc_window+1) \
     ) + largest_window + 1
     idx_2_mid = idx_1_mid + np.tile(
         np.arange(-t2_coinc_window, t2_coinc_window+1, dtype=dtype).repeat(2*t3_coinc_window+1), 
-        (N - 2*(t3_coinc_window+1))
+        (tlen - 2*(t3_coinc_window+1))
     )
     idx_3_mid = idx_1_mid + np.tile(
         np.arange(-t3_coinc_window, t3_coinc_window+1, dtype=dtype), 
-        (N - 2*(t3_coinc_window+1)) * (2*t2_coinc_window+1)
+        (tlen - 2*(t3_coinc_window+1)) * (2*t2_coinc_window+1)
     )
     idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit(
         2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window, dtype=dtype).T
     # now get the tails
     n_start = int(len(idx_1_ends) / 2)
-    idx_1 = np.concatenate((idx_1_ends[:n_start], idx_1_mid, idx_1_ends[-n_start:] + N - (2*t3_coinc_window + 2)))
-    idx_2 = np.concatenate((idx_2_ends[:n_start], idx_2_mid, idx_2_ends[-n_start:] + N - (2*t3_coinc_window + 2)))
-    idx_3 = np.concatenate((idx_3_ends[:n_start], idx_3_mid, idx_3_ends[-n_start:] + N - (2*t3_coinc_window + 2)))
+    idx_1 = np.concatenate((idx_1_ends[:n_start], idx_1_mid, idx_1_ends[-n_start:] + tlen - (2*t3_coinc_window + 2)))
+    idx_2 = np.concatenate((idx_2_ends[:n_start], idx_2_mid, idx_2_ends[-n_start:] + tlen - (2*t3_coinc_window + 2)))
+    idx_3 = np.concatenate((idx_3_ends[:n_start], idx_3_mid, idx_3_ends[-n_start:] + tlen - (2*t3_coinc_window + 2)))
     return np.array([idx_1, idx_2, idx_3]).T
 
-# below version is optimal when there aren't many triggers above the coinc threshold
-# def three_det_sum_and_threshold(
-#     t1, t2, t3, t2_coinc_window, t3_coinc_window, threshold, precalculated_idxs=None
-# ):
-#     N = len(t1)
-#     if 2*max(t2_coinc_window, t3_coinc_window) > N:
-#         raise NotImplementedError("analyzed time must be larger than "
-#             "the coincident window")
-#     # FIXME: have to convert to numpy so that numba can interpret. 
-#     # Find another way if it's desirable to save memory.
-#     t1 = t1.numpy()
-#     t1 = np.real(t1 * t1.conj())
-#     t2 = t2.numpy()
-#     t2 = np.real(t1 * t1.conj())
-#     t3 = t3.numpy()
-#     t3 = np.real(t1 * t1.conj())
-
-#     network_snr_sq = three_det_sum_jit(t1, t2, t3, t2_coinc_window, t3_coinc_window)
-#     mask = network_snr_sq > threshold**2
-#     n_above_thresh = sum(mask)
-#     logging.info("{} ({}%) possible coincs are above threshold".format(
-#         n_above_thresh, 100 * float(n_above_thresh) / len(mask)
-#     ))
-#     coinc_idx = np.nonzero(mask)[0]
-#     # later can improve the below loop by vectorizing the get_i_j_k function.
-#     det_idx = np.array([
-#         get_i_j_k(_i, N, t2_coinc_window, t3_coinc_window, 
-#             precalculated_idxs=precalculated_idxs) 
-#         for _i in coinc_idx])
-#     return np.sqrt(network_snr_sq[mask]), det_idx
-
 def three_det_sum_and_threshold(t1, t2, t3, idx, threshold):
+    dtype = get_index_array_dtype(np.max(idx))
     network_snr_sq = three_det_sum_idx_jit(abs(t1.numpy())**2, 
-        abs(t2.numpy())**2, abs(t3.numpy())**2, idx)
+        abs(t2.numpy())**2, abs(t3.numpy())**2, idx.astype(dtype))
     mask = network_snr_sq > threshold**2
     return np.sqrt(network_snr_sq[mask]), idx[mask]
 
@@ -270,12 +197,19 @@ def snr_2_filter_and_threshold(snr_dom, snr_sub_perp, idx, threshold):
 
 def maximal_coinc_in_ifo(snrs, det_idx, ifo_i=0):
     """Choose the maximum network snr for each time point in ifo_i 
-    (defaults to the zeroth detector)."""
+    (defaults to the zeroth detector).
+    Returns
+    -------
+    snrs
+    det_idx
+    i_max: numpy.array
+        The indices that maximize the snr.
+    """
     i_max = []
     j_start, j_end = 0, 0
-    for c in np.unique(det_idx[:,0], return_counts=True)[1]:
+    for c in np.unique(det_idx[:,ifo_i], return_counts=True)[1]:
         j_end += c
-        i_max.append(np.argmax(snrs[j_start:j_end]) + j_start )
+        i_max.append(np.argmax(snrs[j_start:j_end]) + j_start)
         j_start += c
     i_max = np.array(i_max)
-    return snrs[i_max], det_idx[i_max]
+    return snrs[i_max], det_idx[i_max], i_max

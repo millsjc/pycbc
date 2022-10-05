@@ -86,14 +86,9 @@ parser.add_argument("--user-tag", type=str, metavar="TAG",
                     help="This is used to identify FULL_DATA jobs for "
                          "compatibility with pipedown post-processing. Option "
                          "will be removed when no longer needed.")
-
-parser.add_argument("--ra", type=float, help="Right ascension, in radians")
-parser.add_argument("--dec", type=float, help="Declination, in radians")
 parser.add_argument("--coinc-threshold", type=float, default=0.0,
                     help="Triggers with 2 filter snr below this "
                          "value will be discarded.")
-parser.add_argument("--trigger-time", type=int,
-                    help="Time of the GRB, used to set the antenna patterns.")
 # Add options groups
 strain.insert_strain_option_group_multi_ifo(parser)
 strain.StrainSegments.insert_segment_option_group_multi_ifo(parser)
@@ -104,8 +99,6 @@ opt.insert_optimization_option_group(parser)
 inject.insert_injfilterrejector_option_group_multi_ifo(parser)
 args = parser.parse_args()
 init_logging(args.verbose)
-# Set GRB time variable for convenience
-t_gps = args.trigger_time
 # Put the ifos in alphabetical order so they are always called in
 # the same order.
 ifo_list = args.instruments
@@ -131,32 +124,23 @@ with ctx:
     fft.from_cli(args)
     # Set some often used variables for easy access
     flow = args.low_frequency_cutoff
-    flow_dict = defaultdict(lambda : flow)
-    for count, ifo in enumerate(ifo_list):
-        if count == 0:
-            sample_rate = strain_dict[ifo].sample_rate
-            sample_rate_dict = defaultdict(lambda : sample_rate)
-            flen = strain_segments_dict[ifo].freq_len
-            flen_dict = defaultdict(lambda : flen)
-            tlen = strain_segments_dict[ifo].time_len
-            tlen_dict = defaultdict(lambda : tlen)
-            delta_f = strain_segments_dict[ifo].delta_f
-            delta_f_dict = defaultdict(lambda : delta_f)
-        else:
-            try:
-                assert(sample_rate == strain_dict[ifo].sample_rate)
-                assert(flen == strain_segments_dict[ifo].freq_len)
-                assert(tlen == strain_segments_dict[ifo].time_len)
-                assert(delta_f == strain_segments_dict[ifo].delta_f)
-            except:
-                err_msg = "Sample rate, frequency length and time length "
-                err_msg += "must all be consistent across ifos."
-                raise ValueError(err_msg)
+    sample_rate = strain_dict[ifo_list[0]].sample_rate
+    flen = strain_segments_dict[ifo_list[0]].freq_len
+    tlen = strain_segments_dict[ifo_list[0]].time_len
+    delta_f = strain_segments_dict[ifo_list[0]].delta_f
+    try:
+        for ifo in ifo_list:
+            assert(sample_rate == strain_dict[ifo].sample_rate)
+            assert(flen == strain_segments_dict[ifo].freq_len)
+            assert(tlen == strain_segments_dict[ifo].time_len)
+            assert(delta_f == strain_segments_dict[ifo].delta_f)
+    except:
+        err_msg = "Sample rate, frequency spacing, frequency length "
+        err_msg += "and time length must be consistent across ifos."
+        raise ValueError(err_msg)
     logging.info("Making frequency-domain data segments")
-    segments = {
-        ifo: strain_segments_dict[ifo].fourier_segments()
-        for ifo in ifo_list
-        }
+    segments = {ifo: strain_segments_dict[ifo].fourier_segments()
+        for ifo in ifo_list}
     del strain_segments_dict
     psd.associate_psds_to_multi_ifo_segments(
         args, segments, strain_dict, flen, delta_f, flow, ifo_list,
@@ -168,12 +152,6 @@ with ctx:
     template_mem_dom = zeros(tlen, dtype=complex64)
     template_mem_sub = zeros(tlen, dtype=complex64)
     template_mem_sub_perp = zeros(tlen, dtype=complex64)
-    # Calculate time delay to each detector
-    time_delay_idx = {}
-    for ifo in ifo_list:
-        dt = detector.Detector(ifo).time_delay_from_earth_center(
-            args.ra, args.dec, t_gps)
-        time_delay_idx[ifo] = int(round(dt * sample_rate))
     # FIXME: The single detector SNR threshold should not necessarily be
     #        applied to every IFO (usually only 2 most sensitive in
     #        network)
@@ -198,24 +176,24 @@ with ctx:
         'ifo': int, # IFO is stored as an int internally!
         'snr_dominant': complex64,
         'snr_subdominant': complex64,
-        # 'sigma_sub_perp': float32,
+        'sigma_sub_perp': float32,
         }
     ifo_out_vals = {
         'time_index': None,
         'ifo': None,
         'snr_dominant': None,
         'snr_subdominant': None,
-        # 'sigma_sub_perp': None,
+        'sigma_sub_perp': None,
         }
     ifo_out_names = sorted(ifo_out_vals.keys())
     network_out_types = {
-        'time_index': int,
+        # 'time_index': int,
         'snr_2_filter_rss': float32,
         'snr_2_filter': float32,
         'nifo': int,
         }
     network_out_vals = {
-        'time_index': None,
+        # 'time_index': None,
         'snr_2_filter_rss': None,
         'snr_2_filter': None,
         'nifo': None,
@@ -245,24 +223,35 @@ with ctx:
     ## new code starts
     n_ifos = len(ifo_list)
     if n_ifos != 3:
-        raise NotImplementedError("currently only implemented 3 detector triggers.")
+        raise NotImplementedError("Must be 3 ifos.")
     ifo1 = detector.Detector(ifo_list[0])
     ifo2 = detector.Detector(ifo_list[1])
     ifo3 = detector.Detector(ifo_list[2])
     time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
     time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
-    timing_error = 0.1 # FIXME: pass as argument
-    t2_coinc_window = int(ceil(time_diff_12 * (1+timing_error) * sample_rate))
-    t3_coinc_window = int(ceil(time_diff_13 * (1+timing_error) * sample_rate))
+    time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
+    alpha_23 = hm_utils.angle_between_detectors(
+        time_diff_12, time_diff_13, time_diff_23)
+    timing_error = 0.005 # in ms FIXME: pass as argument
+    t2_coinc_window = int(ceil((time_diff_12 + timing_error) * sample_rate))
+    t3_coinc_window = int(ceil((time_diff_13 + timing_error) * sample_rate))
     if t2_coinc_window > t3_coinc_window:
         raise NotImplementedError(
             "t2_coinc_window must be larger than t3_coinc window.")
-    index_dtype = hm_utils.get_index_array_dtype(tlen)
     logging.info("Calculating possible coincident combinations.")
     idx_combinations = {a_len: hm_utils.index_combinations(a_len, t2_coinc_window, 
-        t3_coinc_window, index_dtype) for a_len in np.unique(analyze_lengths)}
+        t3_coinc_window, np.int64) for a_len in np.unique(analyze_lengths)}
     logging.info("Finished calculating possible coincident combinations.")
-    # pdb.set_trace()
+    logging.info("Removing unphysical combinations.")
+    for a_len, _idx_combinations in idx_combinations.items():
+        n2 = _idx_combinations[:,0] - _idx_combinations[:,1]
+        n3 = _idx_combinations[:,0] - _idx_combinations[:,2]
+        _cond = hm_utils.check_time_delay_is_physical(
+            n2, n3, t2_coinc_window, t3_coinc_window, alpha_23)
+        idx_combinations[a_len] = idx_combinations[a_len][_cond]
+        logging.info("Removed {}/{} ({:.1f}%) unphysical combinations.".format(
+            len(_cond) - len(idx_combinations[a_len]), len(_cond), 
+            100 * (len(_cond) - len(idx_combinations[a_len])) / len(_cond)))
     ## new code ends
     n_segments = len(segments[ifo_list[0]])
     # Loop over templates
@@ -373,99 +362,35 @@ with ctx:
                     det_idx,
                     args.coinc_threshold)
                 logging.info("Finished calculating final stat and thresholding.")
-                logging.info("{} ({}%) possible coincs are above threshold".format(
+                logging.info("{} ({:.1f}%) possible coincs are above threshold".format(
                     len(det_idx), 100 * float(len(det_idx)) / n_combinations))
 
                 logging.info("Finding the maximum stat value for each time "
                     "point in {}".format(ifo_list[0]))
-                snr_2_filter, det_idx = hm_utils.maximal_coinc_in_ifo(
+                snr_2_filter, det_idx, i_max = hm_utils.maximal_coinc_in_ifo(
                     network_snr_2_filter, det_idx)
+                snr_2_filter_rss = network_snr_2_filter_rss[mask][i_max]
+                num_events = len(det_idx)
                 logging.info("{} unique times in {} have coincident triggers"
-                    "".format(len(det_idx), ifo_list[0]))
+                    "".format(num_events, ifo_list[0]))
                 logging.info("Max snr 2 filter = %.2f", max(snr_2_filter))
             # END new looping code here
-
-            # Save the indexes of triggers (if we have any)
-            # Even if we have none, need to keep an empty dictionary.
-            # Only do this is idx doesn't get time shifted out of the time
-            # we are looking at.
-            idx_dict = {
-                ifo: idx[ifo][np.logical_and(
-                    idx[ifo] > time_delay_idx[ifo],
-                    idx[ifo] - time_delay_idx[ifo] < len(snr_dom_dict[ifo])
-                    )
-                ]
-                for ifo in ifo_list}
-            # Find triggers that are coincident (in geocent time) in
-            # multiple ifos. If a single ifo analysis then just use the
-            # indexes from that ifo.
-            if len(ifo_list) > 1:
-                coinc_idx = hm_utils.get_coinc_indexes(idx_dict, time_delay_idx)
-            else:
-                coinc_idx = (
-                    idx_dict[ifo_list[0]]
-                    - time_delay_idx[ifo_list[0]]
-                    )
-            logging.info("Found %d coincident triggers", len(coinc_idx))
-            for ifo in ifo_list:
-                # Move on if this segment has no data
-                if len(snr_dom_dict[ifo])==0:
-                    raise RuntimeError(
-                        'The SNR triggers dictionary is empty. This '
-                        'should not be possible.')
-                # Time delay is applied to indices
-                coinc_idx_det_frame = {
-                    ifo: coinc_idx + time_delay_idx[ifo]
-                    for ifo in ifo_list}
-            # Calculate the coincident 2 filter snr
-            # Check we have data first
-            if len(coinc_idx) != 0:
-                # Find 2 filter snr at trigger times and apply coinc snr
-                # threshold
-                rho_2_filter, rho_2_filter_rss, coinc_idx = hm_utils.snr_2_filter(
-                    snr_dom_dict, snr_sub_dict, coinc_idx, args.coinc_threshold,
-                    time_delay_idx)
-                logging.info(
-                    "%d points above coincident SNR threshold", len(coinc_idx))
-                if len(coinc_idx) != 0:
-                    logging.info("Max coincident SNR = %.2f", max(rho_2_filter))
-            else:
-                logging.info("No triggers above coincident SNR threshold")
-            # FIXME: remove this comment?
-            # We are now going to find the individual detector chi2 values.
-            # To do this it is useful to find the indexes of coinc triggers
-            # in the detector frame.
-            if len(coinc_idx) != 0:
-                # coinc_idx_det_frame is redefined to account for the cuts
-                # to coinc_idx above
-                coinc_idx_det_frame = {
-                    ifo: coinc_idx + time_delay_idx[ifo]
-                    for ifo in ifo_list}
-                snr_dom_ifo_trigs = {
-                    ifo: snr_dom_dict[ifo][coinc_idx_det_frame[ifo]]
-                    for ifo in ifo_list}
-                snr_sub_ifo_trigs = {
-                    ifo: snr_sub_dict[ifo][coinc_idx_det_frame[ifo]]
-                    for ifo in ifo_list}
-                num_events = len(coinc_idx)
+            if num_events > 0:
+                coinc_idx = {ifo: det_idx[:, i] for i, ifo in enumerate(ifo_list)}
                 for ifo in ifo_list:
                     ifo_out_vals['time_index'] = (
-                        np.int64(coinc_idx_det_frame[ifo]) + stilde[ifo].cumulative_index
+                        np.int64(coinc_idx[ifo]) + stilde[ifo].cumulative_index
                         )
-                    ifo_out_vals['snr_dominant'] = snr_dom_ifo_trigs[ifo]
-                    # FIXME: update below
-                    ifo_out_vals['snr_subdominant'] = snr_sub_ifo_trigs[ifo]
+                    ifo_out_vals['snr_dominant'] = abs(snr_dom_dict[ifo][coinc_idx[ifo]])
+                    ifo_out_vals['snr_subdominant'] = abs(snr_sub_dict[ifo][coinc_idx[ifo]])
                     # IFO is stored as an int
-                    ifo_out_vals['ifo'] = (
-                        [event_mgr.ifo_dict[ifo]] * num_events)
+                    ifo_out_vals['ifo'] = ([event_mgr.ifo_dict[ifo]] * num_events)
+                    ifo_out_vals['sigma_sub_perp'] = ([
+                        sigma_sub_perp_dict[ifo]] * num_events)
                     event_mgr.add_template_events_to_ifo(
                         ifo, ifo_out_names, [ifo_out_vals[n] for n in ifo_out_names])
-                pdb.set_trace()
-                network_out_vals['snr_2_filter_rss'] = np.real(rho_2_filter_rss)
-                # FIXME: update below
-                network_out_vals['snr_2_filter'] = np.real(rho_2_filter)
-                # network_out_vals['time_index'] = (
-                #     coinc_idx + stilde[ifo].cumulative_index)
+                network_out_vals['snr_2_filter_rss'] = snr_2_filter_rss
+                network_out_vals['snr_2_filter'] = snr_2_filter
                 network_out_vals['nifo'] = [nifo] * num_events
                 event_mgr.add_template_events_to_network(
                     network_names,
@@ -475,8 +400,9 @@ with ctx:
             cluster_window = int(args.cluster_window * sample_rate)
         elif args.cluster_method == "template":
             cluster_window = int(template.chirp_length * sample_rate)
-        event_mgr.cluster_template_network_events(
-            "time_index", "snr_2_filter", cluster_window)
+        # pdb.set_trace()
+        event_mgr.cluster_template_network_events_single_ifo(
+            "time_index", "snr_2_filter", cluster_window, ifo1.name)
         event_mgr.finalize_template_events()
 event_mgr.write_events(args.output)
 logging.info("Finished")

@@ -881,6 +881,21 @@ class EventManagerCoherent(EventManagerMultiDetBase):
 
 
 class EventManagerHM(EventManagerCoherent):
+    def cluster_template_network_events_single_ifo(
+        self, tcolumn, column, window_size, ifo):
+        """ Cluster the internal events over the named column. Uses a network
+        column and a single ifo's tcolumn.
+        """
+        cvec = self.template_event_dict['network'][column]
+        tvec = self.template_event_dict[ifo][tcolumn]
+        if window_size == 0:
+            indices = numpy.arange(len(tvec))
+        else:
+            indices = findchirp_cluster_over_window(tvec, cvec, window_size)
+        for key in self.template_event_dict:
+            self.template_event_dict[key] = numpy.take(
+                self.template_event_dict[key], indices)
+
     def write_to_hdf(self, outname):
         class fw(object):
             def __init__(self, name):
@@ -904,9 +919,6 @@ class EventManagerHM(EventManagerCoherent):
         f['event_id'] = network_events['event_id']
         f['snr_2_filter'] = network_events['snr_2_filter']
         f['snr_2_filter_rss'] = network_events['snr_2_filter_rss']
-        f['end_time_gc'] = network_events['time_index'] / \
-                float(self.opt.sample_rate[self.ifos[0].lower()]) + \
-                        self.opt.gps_start_time[self.ifos[0].lower()]
         f['nifo'] = network_events['nifo']
         # f['latitude'] = network_events['latitude']
         # f['longitude'] = network_events['longitude']
@@ -991,7 +1003,6 @@ class EventManagerHM(EventManagerCoherent):
                                         [g[1] for g in gating_info[gate_type]])
                         f['gating/' + gate_type + '/pad'] = numpy.array(
                                         [g[2] for g in gating_info[gate_type]])
-
 
 class EventManagerMultiDet(EventManagerMultiDetBase):
     def __init__(self, opt, ifos, column, column_types, psd=None, **kwargs):
