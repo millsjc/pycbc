@@ -17,7 +17,7 @@
 		<Column Name="process:ifos" Type="lstring"/>
 		<Column Name="process:process_id" Type="int_8s"/>
 		<Stream Name="process:table" Type="Local" Delimiter=",">
-			"inspinj","94fe49765e514e86e4b2d53d546e574007737c6f","CLEAN: All modifications committed",1334084720," ",0,"HNB675.fritz.box","503",65274,1347022664,1347022664,0,"lalapps","",0
+			"inspinj","94fe49765e514e86e4b2d53d546e574007737c6f","CLEAN: All modifications committed",1334084720," ",0,"HNB675.fritz.box","503",24992,1348487214,1348487214,0,"lalapps","",0
 		</Stream>
 	</Table>
 	<Table Name="process_params:table">
@@ -29,24 +29,24 @@
 		<Stream Name="process_params:table" Type="Local" Delimiter=",">
 			"inspinj",0,"--f-lower","float","20.000000",
 			"inspinj",0,"--disable-spin","string","",
-			"inspinj",0,"--waveform","string","IMRPhenomDpseudoFourPN",
+			"inspinj",0,"--waveform","string","IMRPhenomHMpseudoFourPN",
 			"inspinj",0,"--amp-order","int","0",
 			"inspinj",0,"--gps-start-time","int","1187008882",
 			"inspinj",0,"--gps-end-time","int","1187008892",
 			"inspinj",0,"--l-distr","string","fixed",
-			"inspinj",0,"--longitude","float","0.000000e+00",
-			"inspinj",0,"--latitude","float","0.000000e+00",
+			"inspinj",0,"--longitude","float","6.449119e-01",
+			"inspinj",0,"--latitude","float","8.107952e-01",
 			"inspinj",0,"--m-distr","string","fixMasses",
 			"inspinj",0,"--fixed-mass1","float","150.000000",
-			"inspinj",0,"--fixed-mass2","float","90.000000",
+			"inspinj",0,"--fixed-mass2","float","30.000000",
 			"inspinj",0,"--i-distr","string","fixed",
-			"inspinj",0,"--fixed-inc","float","1.047198e+00",
+			"inspinj",0,"--fixed-inc","float","1.570796e+00",
 			"inspinj",0,"--coa-phase-distr","string","fixed",
 			"inspinj",0,"--fixed-coa-phase","float","0.000000e+00",
 			"inspinj",0,"--polarization","float","0.000000e+00",
 			"inspinj",0,"--d-distr","string","uniform",
-			"inspinj",0,"--min-distance","float","3.000000e+06",
-			"inspinj",0,"--max-distance","float","3.000000e+06",
+			"inspinj",0,"--min-distance","float","6.000000e+05",
+			"inspinj",0,"--max-distance","float","6.000000e+05",
 			"inspinj",0,"--time-step","float","1.000000e+01",
 			"inspinj",0,"--output","string","injection.xml"
 		</Stream>
@@ -112,7 +112,7 @@
 		<Column Name="sim_inspiral:simulation_id" Type="int_8s"/>
 		<Stream Name="sim_inspiral:table" Type="Local" Delimiter=",">
 
-			0,"IMRPhenomDpseudoFourPN",1187008882,0,1187008881,988265145,1187008881,992419459,1187008882,12675058,1187008881,992445278,1187008882,15019590,40566.97322042206,"",150,90,100.4981384277344,0.234375,3000,0,0,1.047197580337524,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,0,9092.884765625,10454.90625,7555.59375,10760.6083984375,         7599.18,0,0,"",0,"TAPER_NONE",0,0
+			0,"IMRPhenomHMpseudoFourPN",1187008882,0,1187008881,978761796,1187008881,981117071,1187008881,993548703,1187008881,993343218,1187008881,996230313,40566.97322042206,"",150,30,55.06466674804688,0.1388888955116272,600,0.6449118852615356,0.8107952475547791,1.570796370506287,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,0,3881.449462890625,4370.82275390625,7334.9970703125,4226.3603515625,         5770.75,0,0,"",0,"TAPER_NONE",0,0
 		</Stream>
 	</Table>
 </LIGO_LW>
