@@ -951,9 +951,12 @@ class StrainSegments(object):
     def __init__(self, strain, segment_length=None, segment_start_pad=0,
                  segment_end_pad=0, trigger_start=None, trigger_end=None,
                  filter_inj_only=False, injection_window=None,
-                 allow_zero_padding=False):
+                 allow_zero_padding=False, segment_overlap=0):
         """ Determine how to chop up the strain data into smaller segments
-            for analysis.
+            for analysis. Note is segment_overlap is non-zero, analysis
+            segments overlap by segment_overlap seconds. To avoid counting 
+            the same data twice, you must account for this later in the 
+            algorithm.
         """
         self._fourier_segments = None
         self.strain = strain
@@ -974,10 +977,10 @@ class StrainSegments(object):
         seg_start_pad = segment_start_pad
 
         if not trigger_start:
-            trigger_start = int(strain.start_time) + segment_start_pad
+            trigger_start = int(strain.start_time) + seg_start_pad
         else:
             if not allow_zero_padding:
-                min_start_time = int(strain.start_time) + segment_start_pad
+                min_start_time = int(strain.start_time) + seg_start_pad
             else:
                 min_start_time = int(strain.start_time)
             if trigger_start < min_start_time:
@@ -987,10 +990,10 @@ class StrainSegments(object):
                 raise ValueError(err_msg)
 
         if not trigger_end:
-            trigger_end = int(strain.end_time) - segment_end_pad
+            trigger_end = int(strain.end_time) - seg_end_pad
         else:
             if not allow_zero_padding:
-                max_end_time = int(strain.end_time) - segment_end_pad
+                max_end_time = int(strain.end_time) - seg_end_pad
             else:
                 max_end_time = int(strain.end_time)
             if trigger_end > max_end_time:
@@ -1006,15 +1009,16 @@ class StrainSegments(object):
         # The amount of time we can actually analyze given the
         # amount of padding that is needed
         analyzable = trigger_end - trigger_start
-        data_start = (trigger_start - segment_start_pad) - \
+        data_start = (trigger_start - seg_start_pad) - \
                        int(strain.start_time)
-        data_end = trigger_end + segment_end_pad - int(strain.start_time)
+        data_end = trigger_end + seg_end_pad - int(strain.start_time)
         data_dur = data_end - data_start
         data_start = data_start * strain.sample_rate
         data_end = data_end * strain.sample_rate
 
         #number of segments we need to analyze this data
-        num_segs = int(numpy.ceil(float(analyzable) / float(seg_width)))
+        num_segs = int(numpy.ceil(
+            float(analyzable) / float(seg_width + segment_overlap)))
 
         # The offset we will use between segments
         seg_offset = int(numpy.ceil(analyzable / float(num_segs)))
@@ -1024,7 +1028,8 @@ class StrainSegments(object):
         # Determine how to chop up the strain into smaller segments
         for nseg in range(num_segs-1):
             # boundaries for time slices into the strain
-            seg_start = int(data_start + (nseg*seg_offset) * strain.sample_rate)
+            seg_start = int(data_start + \
+                nseg * (seg_offset - segment_overlap) * strain.sample_rate)
             seg_end = int(seg_start + seg_len * strain.sample_rate)
             seg_slice = slice(seg_start, seg_end)
             self.segment_slices.append(seg_slice)
@@ -1041,7 +1046,8 @@ class StrainSegments(object):
         seg_slice = slice(seg_start, seg_end)
         self.segment_slices.append(seg_slice)
 
-        remaining = (data_dur - ((num_segs - 1) * seg_offset + seg_start_pad))
+        remaining = (data_dur - \
+            ((num_segs - 1) * (seg_offset - segment_overlap) + seg_start_pad))
         ana_start = int((seg_len - remaining) * strain.sample_rate)
         ana_end = int((seg_len - seg_end_pad) * strain.sample_rate)
         ana_slice = slice(ana_start, ana_end)
