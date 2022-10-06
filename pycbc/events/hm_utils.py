@@ -25,12 +25,10 @@ def angle_between_detectors(tau_12, tau_13, tau_23):
     alpha_23 = np.arccos((a**2 + b**2 - c**2) / (2*a*b))
     return alpha_23
 
-def check_time_delay_is_physical(
-    n2, n3, N2, N3, alpha_23, rounding=True):
+def check_time_delay_is_physical(n2, n3, N2, N3, alpha_23):
     """Check if the delay time between two detector combinations
     is geometrically possible. The units for time are arbritrary 
-    but must be consistent. However if using rounding units must be 
-    time indices. 
+    but must be consistent. 
     
     Parameters
     ----------
@@ -44,26 +42,52 @@ def check_time_delay_is_physical(
         Light travel time between ifo1 and ifo3.
     alpha_23: float
         Angle (in radians) between ifo2 and ifo3 viewed from ifo1.
-    rounding: bool
-        If True will include the point just outside the geometrical 
-        region in the physical region.
-        
+
     Returns
+    -------
     cond: bool, or boolean array
-        False if delay times are unphysical. 
+        False if delay times are unphysical.
+
+    Notes
+    -----
+    See p. 7 of https://arxiv.org/pdf/gr-qc/9509042.pdf
     """
     N3 = float(N3)
     p = N3 / N2 * np.cos(alpha_23)
     q = N3 / N2 * np.sin(alpha_23)
-    if rounding:
-        # below line ensures we take the dots just outside 
-        # the ellipse to be safe and account for rounding
-        # FIXME: revise below
-        n2_safe = n2 - np.sign(n2)*0.1
-        n3_safe = n3 - np.sign(n3)*0.1
     # Eq 3.4 for the ellipse from https://arxiv.org/pdf/gr-qc/9509042.pdf
-    cond = n3_safe**2 + n2_safe**2*(N3/N2)**2 - 2*p*n2_safe*n3_safe < (q*N2)**2
+    cond = n3**2 + n2**2*(N3/N2)**2 - 2*p*n2*n3 < (q*N2)**2
     return cond
+
+# below function not currently used anywhere.
+def delay_bounds(n2, N2, N3, alpha_23):
+    """Returns the bounds on possible delay times between detectors 1 
+    and 3, given a delay between 1 and 2. The units for time are 
+    arbritrary but must be consistent.
+
+    Parameters
+    ----------
+    n2: float
+        Delay time between ifo1 and ifo2.
+    N2: float
+        Light travel time between ifo1 and ifo2.
+    N3: float
+        Light travel time between ifo1 and ifo3.
+    alpha_23: float
+        Angle (in radians) between ifo2 and ifo3 viewed from ifo1.
+
+    Returns
+    -------
+    min_delay: float
+    max_delay: float
+
+    Notes
+    -----
+    See p. 7 of https://arxiv.org/pdf/gr-qc/9509042.pdf
+    """
+    theta = arccos(n2 / N2)
+    min_max = (N3 * cos(theta + alpha_23), N3 * cos(theta - alpha_23))
+    return sorted(min_max)
 
 @njit 
 def three_det_sum_jit(t1, t2, t3, t2_coinc_window, t3_coinc_window):
