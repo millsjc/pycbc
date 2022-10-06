@@ -90,6 +90,18 @@ class ThresholdCluster(object):
         return real_cls(*args, **kwargs) # pylint:disable=not-callable
 
 
+class fw(object):
+    def __init__(self, name):
+        self.f = h5py.File(name, 'w')
+
+    def __setitem__(self, name, data):
+        col = self.prefix + '/' + name
+        self.f.create_dataset(col, data=data,
+                                compression='gzip',
+                                compression_opts=9,
+                                shuffle=True)
+
+
 # The class below should serve as the parent for all schemed classes.
 # The intention is that this class serves simply as the location for
 # all documentation of the class and its methods, though that is not
@@ -415,23 +427,12 @@ class EventManager(object):
             raise ValueError('Cannot write to this format')
 
     def write_to_hdf(self, outname):
-        class fw(object):
-            def __init__(self, name, prefix):
-                self.f = h5py.File(name, 'w')
-                self.prefix = prefix
-
-            def __setitem__(self, name, data):
-                col = self.prefix + '/' + name
-                self.f.create_dataset(col, data=data,
-                                      compression='gzip',
-                                      compression_opts=9,
-                                      shuffle=True)
-
         self.events.sort(order='template_id')
         th = numpy.array([p['tmplt'].template_hash for p in
                           self.template_params])
         tid = self.events['template_id']
-        f = fw(outname, self.opt.channel_name[0:2])
+        f = fw(outname)
+        f.prefix = self.opt.channel_name[0:2]
 
         if len(self.events):
             f['snr'] = abs(self.events['snr'])
@@ -653,17 +654,6 @@ class EventManagerCoherent(EventManagerMultiDetBase):
         self.template_events = None
 
     def write_to_hdf(self, outname):
-        class fw(object):
-            def __init__(self, name):
-                self.f = h5py.File(name, 'w')
-
-            def __setitem__(self, name, data):
-                col = self.prefix + '/' + name
-                self.f.create_dataset(col, data=data,
-                                      compression='gzip',
-                                      compression_opts=9,
-                                      shuffle=True)
-
         self.events.sort(order='template_id')
         th = numpy.array([p['tmplt'].template_hash for p in
                           self.template_params])
@@ -896,18 +886,13 @@ class EventManagerHM(EventManagerCoherent):
             self.template_event_dict[key] = numpy.take(
                 self.template_event_dict[key], indices)
 
+    def finalize_template_events(self):
+        super().finalize_template_events()
+        # check the fringes. 
+        # snr_2_filter, det_idx, i_max = hm_utils.maximal_coinc_in_ifo(
+            # network_snr_2_filter, det_idx, fixed_ifo_idx)
+
     def write_to_hdf(self, outname):
-        class fw(object):
-            def __init__(self, name):
-                self.f = h5py.File(name, 'w')
-
-            def __setitem__(self, name, data):
-                col = self.prefix + '/' + name
-                self.f.create_dataset(col, data=data,
-                                      compression='gzip',
-                                      compression_opts=9,
-                                      shuffle=True)
-
         self.events.sort(order='template_id')
         th = numpy.array([p['tmplt'].template_hash for p in
                           self.template_params])
@@ -1071,17 +1056,6 @@ class EventManagerMultiDet(EventManagerMultiDetBase):
             raise ValueError('Cannot write to this format')
 
     def write_to_hdf(self, outname):
-        class fw(object):
-            def __init__(self, name):
-                self.f = h5py.File(name, 'w')
-
-            def __setitem__(self, name, data):
-                col = self.prefix + '/' + name
-                self.f.create_dataset(col, data=data,
-                                      compression='gzip',
-                                      compression_opts=9,
-                                      shuffle=True)
-
         self.events.sort(order='template_id')
         th = numpy.array([p['tmplt'].template_hash for p in
                                                          self.template_params])
