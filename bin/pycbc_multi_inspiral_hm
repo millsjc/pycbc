@@ -102,11 +102,33 @@ opt.insert_optimization_option_group(parser)
 inject.insert_injfilterrejector_option_group_multi_ifo(parser)
 args = parser.parse_args()
 init_logging(args.verbose)
+
+ifo_list = args.instruments
 # Put the ifos in alphabetical order so they are always called in
 # the same order.
-ifo_list = args.instruments
 ifo_list.sort()
 nifo = len(ifo_list)
+if nifo != 3:
+    raise NotImplementedError("Must be 3 ifos.")
+ifo1 = detector.Detector(ifo_list[0])
+ifo2 = detector.Detector(ifo_list[1])
+ifo3 = detector.Detector(ifo_list[2])
+time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
+time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
+time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
+if time_diff_12 > time_diff_13:
+    raise NotImplementedError(
+        "t3_coinc_window must be larger than t2_coinc window.")
+alpha_23 = hm_utils.angle_between_detectors(
+    time_diff_12, time_diff_13, time_diff_23)
+t2_coinc_window = int(ceil((
+    time_diff_12 + args.timing_error) * args.sample_rate[ifo1.name]))
+t3_coinc_window = int(ceil((
+    time_diff_13 + args.timing_error) * args.sample_rate[ifo1.name]))
+segment_overlap = max(t2_coinc_window, t3_coinc_window)
+#FIXME: pass below on cl once can handle different det combinations.
+fixed_ifo_idx = 0 
+pdb.set_trace()
 strain.verify_strain_options_multi_ifo(args, parser, ifo_list)
 strain.StrainSegments.verify_segment_options_multi_ifo(
         args, parser, ifo_list)
@@ -222,24 +244,6 @@ with ctx:
     if not len(bank) == n_bank:
         n_bank = len(bank)
         logging.info("Template bank size after thinning: %d", n_bank)
-    
-    ## new code starts
-    n_ifos = len(ifo_list)
-    if n_ifos != 3:
-        raise NotImplementedError("Must be 3 ifos.")
-    ifo1 = detector.Detector(ifo_list[0])
-    ifo2 = detector.Detector(ifo_list[1])
-    ifo3 = detector.Detector(ifo_list[2])
-    time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
-    time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
-    time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
-    alpha_23 = hm_utils.angle_between_detectors(
-        time_diff_12, time_diff_13, time_diff_23)
-    t2_coinc_window = int(ceil((time_diff_12 + args.timing_error) * sample_rate))
-    t3_coinc_window = int(ceil((time_diff_13 + args.timing_error) * sample_rate))
-    if t2_coinc_window > t3_coinc_window:
-        raise NotImplementedError(
-            "t2_coinc_window must be larger than t3_coinc window.")
     logging.info("Calculating possible coincident combinations.")
     idx_combinations = {a_len: hm_utils.index_combinations(a_len, t2_coinc_window, 
         t3_coinc_window, np.int64) for a_len in np.unique(analyze_lengths)}
@@ -368,13 +372,13 @@ with ctx:
                     len(det_idx), 100 * float(len(det_idx)) / n_combinations))
 
                 logging.info("Finding the maximum stat value for each time "
-                    "point in {}".format(ifo_list[0]))
+                    "point in {}".format(ifo_list[fixed_ifo_idx]))
                 snr_2_filter, det_idx, i_max = hm_utils.maximal_coinc_in_ifo(
-                    network_snr_2_filter, det_idx)
+                    network_snr_2_filter, det_idx, fixed_ifo_idx)
                 snr_2_filter_rss = network_snr_2_filter_rss[mask][i_max]
                 num_events = len(det_idx)
                 logging.info("{} unique times in {} have coincident triggers"
-                    "".format(num_events, ifo_list[0]))
+                    "".format(num_events, ifo_list[fixed_ifo_idx]))
                 logging.info("Max snr 2 filter = %.2f", max(snr_2_filter))
             # END new looping code here
             if num_events > 0:
