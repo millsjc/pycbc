@@ -89,6 +89,9 @@ parser.add_argument("--user-tag", type=str, metavar="TAG",
 parser.add_argument("--coinc-threshold", type=float, default=0.0,
                     help="Triggers with 2 filter snr below this "
                          "value will be discarded.")
+parser.add_argument("--timing-error", type=float, default=0.005,
+                    help="timing error in ms to assume when calculating possible "
+                         "coincident combinations.")
 # Add options groups
 strain.insert_strain_option_group_multi_ifo(parser)
 strain.StrainSegments.insert_segment_option_group_multi_ifo(parser)
@@ -232,9 +235,8 @@ with ctx:
     time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
     alpha_23 = hm_utils.angle_between_detectors(
         time_diff_12, time_diff_13, time_diff_23)
-    timing_error = 0.005 # in ms FIXME: pass as argument
-    t2_coinc_window = int(ceil((time_diff_12 + timing_error) * sample_rate))
-    t3_coinc_window = int(ceil((time_diff_13 + timing_error) * sample_rate))
+    t2_coinc_window = int(ceil((time_diff_12 + args.timing_error) * sample_rate))
+    t3_coinc_window = int(ceil((time_diff_13 + args.timing_error) * sample_rate))
     if t2_coinc_window > t3_coinc_window:
         raise NotImplementedError(
             "t2_coinc_window must be larger than t3_coinc window.")
@@ -404,6 +406,7 @@ with ctx:
         event_mgr.cluster_template_network_events_single_ifo(
             "time_index", "snr_2_filter", cluster_window, ifo1.name)
         event_mgr.finalize_template_events()
+        pdb.set_trace()
 event_mgr.write_events(args.output)
 logging.info("Finished")
 logging.info("Time to complete analysis: %.0f s", time.time() - time_init)
