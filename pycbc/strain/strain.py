@@ -1016,10 +1016,10 @@ class StrainSegments(object):
         data_start = data_start * strain.sample_rate
         data_end = data_end * strain.sample_rate
 
+        assert seg_width > segment_overlap, "Segment overlap is too big."
         #number of segments we need to analyze this data
-        num_segs = int(numpy.ceil(
-            float(analyzable) / float(seg_width + segment_overlap)))
-
+        num_segs = int(numpy.ceil(1 + float(analyzable - seg_width) 
+            / float(seg_width - segment_overlap)))
         # The offset we will use between segments
         seg_offset = int(numpy.ceil(analyzable / float(num_segs)))
         self.segment_slices = []
@@ -1180,7 +1180,7 @@ class StrainSegments(object):
 
 
     @classmethod
-    def from_cli_single_ifo(cls, opt, strain, ifo):
+    def from_cli_single_ifo(cls, opt, strain, ifo, segment_overlap=0):
         """Calculate the segmentation of the strain data for analysis from
         the command line options.
         """
@@ -1190,17 +1190,18 @@ class StrainSegments(object):
                    trigger_start=opt.trig_start_time[ifo],
                    trigger_end=opt.trig_end_time[ifo],
                    filter_inj_only=opt.filter_inj_only,
-                   allow_zero_padding=opt.allow_zero_padding)
+                   allow_zero_padding=opt.allow_zero_padding,
+                   segment_overlap=segment_overlap)
 
     @classmethod
-    def from_cli_multi_ifos(cls, opt, strain_dict, ifos):
+    def from_cli_multi_ifos(cls, opt, strain_dict, ifos, segment_overlap=0):
         """Calculate the segmentation of the strain data for analysis from
         the command line options.
         """
         strain_segments = {}
         for ifo in ifos:
             strain_segments[ifo] = cls.from_cli_single_ifo(
-                opt, strain_dict[ifo], ifo)
+                opt, strain_dict[ifo], ifo, segment_overlap)
         return strain_segments
 
     @classmethod

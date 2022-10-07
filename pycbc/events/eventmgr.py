@@ -32,6 +32,7 @@ import pickle
 from pycbc.types import Array
 from pycbc.scheme import schemed
 from pycbc.detector import Detector
+from pycbc.events import hm_utils
 
 from . import coinc, ranking
 
@@ -886,11 +887,15 @@ class EventManagerHM(EventManagerCoherent):
             self.template_event_dict[key] = numpy.take(
                 self.template_event_dict[key], indices)
 
-    def finalize_template_events(self):
+    def finalize_template_events(self, tcolumn, column, ifo):
+        # check the fringes, and remove any duplicate events
+        cvec = self.template_event_dict['network'][column]
+        tvec = self.template_event_dict[ifo][tcolumn]
+        indices = hm_utils.maximal_coinc_in_ifo(cvec, tvec)
+        for key in self.template_event_dict:
+            self.template_event_dict[key] = numpy.take(
+                self.template_event_dict[key], indices)
         super().finalize_template_events()
-        # check the fringes. 
-        # snr_2_filter, det_idx, i_max = hm_utils.maximal_coinc_in_ifo(
-            # network_snr_2_filter, det_idx, fixed_ifo_idx)
 
     def write_to_hdf(self, outname):
         self.events.sort(order='template_id')

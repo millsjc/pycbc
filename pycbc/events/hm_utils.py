@@ -219,21 +219,18 @@ def snr_2_filter_and_threshold(snr_dom, snr_sub_perp, idx, threshold):
     mask = snr_2_filter > threshold
     return snr_2_filter[mask], idx[mask], mask
 
-def maximal_coinc_in_ifo(snrs, det_idx, ifo_i=0):
-    """Choose the maximum network snr for each time point in ifo_i 
-    (defaults to the zeroth detector).
+def maximal_coinc_in_ifo(snrs, time_idx):
+    """Choose the maximum network snr for each time point.
     Returns
     -------
-    snrs
-    det_idx
     i_max: numpy.array
         The indices that maximize the snr.
     """
     i_max = []
     j_start, j_end = 0, 0
-    for c in np.unique(det_idx[:,ifo_i], return_counts=True)[1]:
+    for c in np.unique(time_idx, return_counts=True)[1]:
         j_end += c
         i_max.append(np.argmax(snrs[j_start:j_end]) + j_start)
         j_start += c
     i_max = np.array(i_max)
-    return snrs[i_max], det_idx[i_max], i_max
+    return i_max
