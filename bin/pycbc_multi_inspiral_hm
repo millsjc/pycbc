@@ -31,10 +31,9 @@ from pycbc import (
     detector, fft, init_logging, inject, opt, psd, scheme, strain, vetoes,
     waveform, DYN_RANGE_FAC
 )
-from pycbc.events import ranking, EventManagerHM, hm_utils
+from pycbc.events import ranking, EventManagerHM, hm_utils, threshold_only
 from pycbc.filter import MatchedFilterControlHM
 from pycbc.types import zeros, float32, complex64
-from numba import njit
 import pdb
 # from pycbc.vetoes import sgchisq
 time_init = time.time()
@@ -102,32 +101,40 @@ opt.insert_optimization_option_group(parser)
 inject.insert_injfilterrejector_option_group_multi_ifo(parser)
 args = parser.parse_args()
 init_logging(args.verbose)
+#FIXME: pass below on cl once can handle different det combinations.
+fixed_ifo_idx = 0
 
 ifo_list = args.instruments
 # Put the ifos in alphabetical order so they are always called in
 # the same order.
 ifo_list.sort()
 nifo = len(ifo_list)
-if nifo != 3:
-    raise NotImplementedError("Must be 3 ifos.")
-ifo1 = detector.Detector(ifo_list[0])
-ifo2 = detector.Detector(ifo_list[1])
-ifo3 = detector.Detector(ifo_list[2])
-time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
-time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
-time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
-if time_diff_12 > time_diff_13:
-    raise NotImplementedError(
-        "t3_coinc_window must be larger than t2_coinc window.")
-alpha_23 = hm_utils.angle_between_detectors(
-    time_diff_12, time_diff_13, time_diff_23)
-t2_coinc_window = int(ceil((
-    time_diff_12 + args.timing_error) * args.sample_rate[ifo1.name]))
-t3_coinc_window = int(ceil((
-    time_diff_13 + args.timing_error) * args.sample_rate[ifo1.name]))
-segment_overlap = max(t2_coinc_window, t3_coinc_window)
-#FIXME: pass below on cl once can handle different det combinations.
-fixed_ifo_idx = 0
+if nifo>1:
+    # calculate coincident window.
+    ifo1 = detector.Detector(ifo_list[0])
+    ifo2 = detector.Detector(ifo_list[1])
+    time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
+    t2_coinc_window = int(ceil((
+        time_diff_12 + args.timing_error) * args.sample_rate[ifo1.name]))
+    segment_overlap = t2_coinc_window
+    t3_coinc_window=None
+    if nifo>2:
+        ifo3 = detector.Detector(ifo_list[2])
+        time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
+        time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
+        if time_diff_12 > time_diff_13:
+            #FIXME: consider switching labels, ifo_list order and anything 
+            # else necessary to force this condition
+            raise NotImplementedError(
+                "t3_coinc_window must be larger than t2_coinc window.")
+        alpha_23 = hm_utils.angle_between_detectors(
+            time_diff_12, time_diff_13, time_diff_23)
+        t3_coinc_window = int(ceil((
+            time_diff_13 + args.timing_error) * args.sample_rate[ifo1.name]))
+        segment_overlap = max(segment_overlap, t3_coinc_window)
+else:
+    segment_overlap = 0
+
 strain.verify_strain_options_multi_ifo(args, parser, ifo_list)
 strain.StrainSegments.verify_segment_options_multi_ifo(
         args, parser, ifo_list)
@@ -140,9 +147,26 @@ strain_dict = strain.from_cli_multi_ifos(
     args, ifo_list, inj_filter_rejector, dyn_range_fac=DYN_RANGE_FAC)
 strain_segments_dict = strain.StrainSegments.from_cli_multi_ifos(
     args, strain_dict, ifo_list, 
-    segment_overlap=segment_overlap / args.sample_rate[ifo1.name])
+    segment_overlap=segment_overlap / args.sample_rate[ifo_list[0]])
 analyze_slices = strain_segments_dict[ifo_list[0]].analyze_slices
 analyze_lengths = [asl.stop - asl.start for asl in analyze_slices]
+
+if nifo>1:
+    logging.info("Calculating possible coincident combinations")
+    idx_combinations = {a_len: hm_utils.index_combinations(a_len, t2_coinc_window, 
+        t3_coinc_window, np.int64) for a_len in np.unique(analyze_lengths)}
+    logging.info("Finished calculating possible coincident combinations")
+    if nifo>2:
+        logging.info("Removing unphysical combinations")
+        for a_len, _idx_combinations in idx_combinations.items():
+            n2 = _idx_combinations[:,0] - _idx_combinations[:,1]
+            n3 = _idx_combinations[:,0] - _idx_combinations[:,2]
+            _cond = hm_utils.check_time_delay_is_physical(
+                n2, n3, t2_coinc_window, t3_coinc_window, alpha_23)
+            idx_combinations[a_len] = idx_combinations[a_len][_cond]
+            logging.info("Removed {}/{} ({:.1f}%) unphysical combinations".format(
+                len(_cond) - len(idx_combinations[a_len]), len(_cond), 
+                100 * (len(_cond) - len(idx_combinations[a_len])) / len(_cond)))
 
 ctx = scheme.from_cli(args)
 with ctx:
@@ -212,13 +236,11 @@ with ctx:
         }
     ifo_out_names = sorted(ifo_out_vals.keys())
     network_out_types = {
-        # 'time_index': int,
         'snr_2_filter_rss': float32,
         'snr_2_filter': float32,
         'nifo': int,
         }
     network_out_vals = {
-        # 'time_index': None,
         'snr_2_filter_rss': None,
         'snr_2_filter': None,
         'nifo': None,
@@ -244,21 +266,6 @@ with ctx:
     if not len(bank) == n_bank:
         n_bank = len(bank)
         logging.info("Template bank size after thinning: %d", n_bank)
-    logging.info("Calculating possible coincident combinations")
-    idx_combinations = {a_len: hm_utils.index_combinations(a_len, t2_coinc_window, 
-        t3_coinc_window, np.int64) for a_len in np.unique(analyze_lengths)}
-    logging.info("Finished calculating possible coincident combinations")
-    logging.info("Removing unphysical combinations")
-    for a_len, _idx_combinations in idx_combinations.items():
-        n2 = _idx_combinations[:,0] - _idx_combinations[:,1]
-        n3 = _idx_combinations[:,0] - _idx_combinations[:,2]
-        _cond = hm_utils.check_time_delay_is_physical(
-            n2, n3, t2_coinc_window, t3_coinc_window, alpha_23)
-        idx_combinations[a_len] = idx_combinations[a_len][_cond]
-        logging.info("Removed {}/{} ({:.1f}%) unphysical combinations".format(
-            len(_cond) - len(idx_combinations[a_len]), len(_cond), 
-            100 * (len(_cond) - len(idx_combinations[a_len])) / len(_cond)))
-    ## new code ends
     n_segments = len(segments[ifo_list[0]])
     # Loop over templates
     for t_num, (template_dom, template_sub) in enumerate(bank):
@@ -339,43 +346,47 @@ with ctx:
             # Move onto next segment if there are no triggers.
             if n_single_trigs==0: continue
 
-            # START new looping code here
-            logging.info("Calculating network rss 2 filter snr and thresholding")
-            network_snr_2_filter_rss, det_idx = hm_utils.three_det_sum_and_threshold(
-                snr_2_filt_rss_dict[ifo1.name],
-                snr_2_filt_rss_dict[ifo2.name],
-                snr_2_filt_rss_dict[ifo3.name],
-                idx_combinations[analyze_lengths[s_num]],
-                args.coinc_threshold)
-            logging.info("Finished calculating rss snr and thresholding")
-            n_combinations = len(idx_combinations[analyze_lengths[s_num]])
-            logging.info("{} ({}%) possible coincs are above threshold".format(
-                len(det_idx), 100 * float(len(det_idx)) / n_combinations))
-
-            if len(det_idx):
-                logging.info("Calculating final stat and thresholding")
-                network_snr_2_filter, det_idx, mask = hm_utils.snr_2_filter_and_threshold(
-                    np.array([snr_dom_dict[ifo] for ifo in ifo_list]),
-                    np.array([snr_sub_dict[ifo] for ifo in ifo_list]),
-                    det_idx,
+            if nifo>1:
+                # START new looping code here
+                logging.info("Calculating network rss 2 filter snr and thresholding")
+                network_snr_2_filter_rss, det_idx = hm_utils.detector_sum_and_threshold(
+                    np.array([snr_2_filt_rss_dict[ifo] for ifo in ifo_list]),
+                    idx_combinations[analyze_lengths[s_num]],
                     args.coinc_threshold)
-                logging.info("Finished calculating final stat and thresholding")
-                logging.info("{} ({:.1f}%) possible coincs are above threshold".format(
+                logging.info("Finished calculating rss snr and thresholding")
+                n_combinations = len(idx_combinations[analyze_lengths[s_num]])
+                logging.info("{} ({}%) possible coincs are above threshold".format(
                     len(det_idx), 100 * float(len(det_idx)) / n_combinations))
-
-                logging.info("Finding the maximum stat value for each time "
-                    "point in {}".format(ifo_list[fixed_ifo_idx]))
-                i_max = hm_utils.maximal_coinc_in_ifo(
-                    network_snr_2_filter, det_idx[:,fixed_ifo_idx])
-                snr_2_filter = network_snr_2_filter[i_max]
-                det_idx = det_idx[i_max]
-                snr_2_filter_rss = network_snr_2_filter_rss[mask][i_max]
                 num_events = len(det_idx)
-                logging.info("{} unique times in {} have coincident triggers"
-                    "".format(num_events, ifo_list[fixed_ifo_idx]))
-                logging.info("Max snr 2 filter = %.2f", max(snr_2_filter))
-            # END new looping code here
+                if num_events > 0:
+                    logging.info("Calculating final stat and thresholding")
+                    network_snr_2_filter, det_idx, mask = hm_utils.snr_2_filter_and_threshold(
+                        np.array([snr_dom_dict[ifo] for ifo in ifo_list]),
+                        np.array([snr_sub_dict[ifo] for ifo in ifo_list]),
+                        det_idx,
+                        args.coinc_threshold)
+                    logging.info("Finished calculating final stat and thresholding")
+                    logging.info("{} ({:.1f}%) possible coincs are above threshold".format(
+                        len(det_idx), 100 * float(len(det_idx)) / n_combinations))
+
+                    logging.info("Finding the maximum stat value for each time "
+                        "point in {}".format(ifo_list[fixed_ifo_idx]))
+                    i_max = hm_utils.maximal_coinc_in_ifo(
+                        network_snr_2_filter, det_idx[:,fixed_ifo_idx])
+                    snr_2_filter = network_snr_2_filter[i_max]
+                    det_idx = det_idx[i_max]
+                    snr_2_filter_rss = network_snr_2_filter_rss[mask][i_max]
+                    num_events = len(det_idx)
+                    logging.info("{} unique times in {} have coincident triggers"
+                        "".format(num_events, ifo_list[fixed_ifo_idx]))
+            else:
+                det_idx, snr_2_filter_rss = threshold_only(snr_2_filt_rss,
+                                                args.coinc_threshold)
+                det_idx = np.array([det_idx]).T
+                snr_2_filter = snr_2_filter_rss
+                num_events = len(det_idx)
             if num_events > 0:
+                logging.info("Max snr 2 filter = %.2f", max(snr_2_filter))
                 coinc_idx = {ifo: det_idx[:, i] for i, ifo in enumerate(ifo_list)}
                 for ifo in ifo_list:
                     ifo_out_vals['time_index'] = (
@@ -402,9 +413,9 @@ with ctx:
             cluster_window = int(template.chirp_length * sample_rate)
         # pdb.set_trace()
         event_mgr.cluster_template_network_events_single_ifo(
-            "time_index", "snr_2_filter", cluster_window, ifo1.name)
+            "time_index", "snr_2_filter", cluster_window, ifo_list[fixed_ifo_idx])
         event_mgr.finalize_template_events(
-            "time_index", "snr_2_filter", ifo1.name)
+            "time_index", "snr_2_filter", ifo_list[fixed_ifo_idx])
 event_mgr.write_events(args.output)
 logging.info("Finished")
 logging.info("Time to complete analysis: %.0f s", time.time() - time_init)

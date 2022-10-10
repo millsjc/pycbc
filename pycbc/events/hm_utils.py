@@ -85,20 +85,9 @@ def delay_bounds(n2, N2, N3, alpha_23):
     -----
     See p. 7 of https://arxiv.org/pdf/gr-qc/9509042.pdf
     """
-    theta = arccos(n2 / N2)
-    min_max = (N3 * cos(theta + alpha_23), N3 * cos(theta - alpha_23))
+    theta = np.arccos(n2 / N2)
+    min_max = (N3 * np.cos(theta + alpha_23), N3 * np.cos(theta - alpha_23))
     return sorted(min_max)
-
-@njit 
-def three_det_sum_jit(t1, t2, t3, t2_coinc_window, t3_coinc_window):
-    tlen = len(t1)
-    network_snr_sq = np.array([
-        t1[i] + t2[j] + t3[k]
-            for i in range(tlen)
-                for j in range(max(i-t2_coinc_window, 0), min(tlen, i+t2_coinc_window+1))
-                    for k in range(max(i-t3_coinc_window, 0), min(tlen, i+t3_coinc_window+1))
-                ])
-    return network_snr_sq
 
 @njit
 def three_det_sum_idx_jit(t1, t2, t3, idx):
@@ -109,6 +98,10 @@ def three_det_sum_idx_jit(t1, t2, t3, idx):
                 ])
     return temp
 
+@njit
+def two_det_sum_idx_jit(t1, t2, idx):
+    return np.array([t1[i] + t2[j] for i,j in idx])
+
 def get_index_array_dtype(max_index):
     # reduce the size of the index array where possible
     bits_dtypes = [(8, np.uint8), (16, np.uint16), (32, np.uint32), (64, np.uint64)]
@@ -117,7 +110,7 @@ def get_index_array_dtype(max_index):
     return dtype
 
 @njit
-def get_indices_jit(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
+def get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
     idx = np.array([
         [i,j,k]
             for i in range(tlen)
@@ -126,56 +119,22 @@ def get_indices_jit(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
                 ], dtype=dtype)
     return idx
 
-def number_tail(t2_coinc_window, t3_coinc_window):
-    n_tail = (
-        sum(
-            (t2_coinc_window + 1 + np.arange(0, t2_coinc_window+1)) * (t3_coinc_window + 1 + np.arange(0, t2_coinc_window+1))
-        ) + \
-        sum(
-            (2* t2_coinc_window + 1) * (t3_coinc_window + 1 + np.arange(t2_coinc_window+1, t3_coinc_window+1))
-        )
-    )
-    return n_tail
-
-def number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window):
-    """Assumes t3_coinc_window>t2_coinc_window, and tlen is the number of time samples."""
-    n_tail = number_tail(t2_coinc_window, t3_coinc_window)
-    n_middle = (tlen - 2*(t3_coinc_window+1)) * (2 * t2_coinc_window + 1) * (2 * t3_coinc_window + 1) 
-    n_c = 2 * n_tail + n_middle
-    return n_c
-
-def get_i_j_k(coinc_idx, tlen, t2_coinc_window, t3_coinc_window, precalculated_idxs=None):
-    """Get the indices i,j,k of the detector timeseries corresponding to 
-    coincident index coinc_idx. Assumes t3_coinc_window>t2_coinc_window, 
-    and tlen is the number of analyzed time samples."""
-    if coinc_idx < 0:
-        raise ValueError("indices cannot be negative.")
-    n_c = number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window)
-    n_tail = number_tail(t2_coinc_window, t3_coinc_window)
-    largest_window = max(t2_coinc_window, t3_coinc_window)
-    if (coinc_idx > n_tail-1)&(coinc_idx < n_c-n_tail):
-        i, remainder = divmod(coinc_idx - n_tail, (2*t2_coinc_window+1)*(2*t3_coinc_window+1))
-        i += largest_window + 1
-        j, remainder_2 = divmod(remainder, (2*t3_coinc_window+1))
-        j += i - (t2_coinc_window)
-        k = remainder_2 + i - (t3_coinc_window)
-    else:
-        if precalculated_idxs is None:
-            precalculated_idxs = get_indices_jit(2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window)
-        
-        if not (coinc_idx > (n_tail-1)):
-            # at the beginning
-            i, j, k = precalculated_idxs[coinc_idx]
-        else:
-            # at the end
-            i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + tlen - (2*t3_coinc_window + 2)
-    return i, j, k
+@njit
+def get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype=np.int64):
+    idx = np.array([
+        [i,j]
+            for i in range(tlen)
+                for j in range(max(i-t2_coinc_window, 0), min(tlen, i+t2_coinc_window+1))
+                ], dtype=dtype)
+    return idx
 
 def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
-    """This messy function is equivalent to calling get_indices_jit, but is 
-    generally faster."""
-    if 2*max(t2_coinc_window, t3_coinc_window) > tlen:
-        return get_indices_jit(tlen, t2_coinc_window, t3_coinc_window, dtype)
+    """For three detectors, this is equivalent to calling get_indices_jit_3_ifo, but is 
+    generally faster. For two detectors this just calls get_indices_jit_2_ifo directly."""
+    if t3_coinc_window is None:
+        return get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype)
+    elif 2*max(t2_coinc_window, t3_coinc_window) > tlen:
+        return get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window, dtype)
     # forgetting the tails at first
     largest_window = max(t2_coinc_window, t3_coinc_window)
     idx_1_mid = np.arange(tlen - 2*(t3_coinc_window+1), dtype=dtype).repeat( \
@@ -189,7 +148,7 @@ def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
         np.arange(-t3_coinc_window, t3_coinc_window+1, dtype=dtype), 
         (tlen - 2*(t3_coinc_window+1)) * (2*t2_coinc_window+1)
     )
-    idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit(
+    idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit_3_ifo(
         2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window, dtype=dtype).T
     # now get the tails
     n_start = int(len(idx_1_ends) / 2)
@@ -198,10 +157,32 @@ def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
     idx_3 = np.concatenate((idx_3_ends[:n_start], idx_3_mid, idx_3_ends[-n_start:] + tlen - (2*t3_coinc_window + 2)))
     return np.array([idx_1, idx_2, idx_3]).T
 
-def three_det_sum_and_threshold(t1, t2, t3, idx, threshold):
+def detector_sum_and_threshold(snr_2_filt_rss, idx, threshold):
+    """
+    Parameters
+    ----------
+    snr_2_filt_rss: numpy.array2d
+        zeroth index picks detector.
+    idx: numpy.array2d
+        The index combinations to sum over. Zeroth index picks detector.
+    threshold: float
+
+    Returns
+    -------
+    network_snr_2_filt_rss: numpy.array
+        The network SNR for the events that survive the cut.
+    idx: numpy.array2d
+        The index combinations that survived the cut.
+    """
+    snr_2_filt_rss = abs(snr_2_filt_rss)**2
+    nifos = len(snr_2_filt_rss)
     dtype = get_index_array_dtype(np.max(idx))
-    network_snr_sq = three_det_sum_idx_jit(abs(t1.numpy())**2, 
-        abs(t2.numpy())**2, abs(t3.numpy())**2, idx.astype(dtype))
+    if nifos == 3:
+        network_snr_sq = three_det_sum_idx_jit(
+            snr_2_filt_rss[0], snr_2_filt_rss[1], snr_2_filt_rss[2], idx.astype(dtype))
+    elif nifos == 2:
+        network_snr_sq = two_det_sum_idx_jit(
+            snr_2_filt_rss[0], snr_2_filt_rss[1], idx.astype(dtype))
     mask = network_snr_sq > threshold**2
     return np.sqrt(network_snr_sq[mask]), idx[mask]
 
