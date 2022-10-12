@@ -88,6 +88,87 @@ def delay_bounds(n2, N2, N3, alpha_23):
     theta = np.arccos(n2 / N2)
     min_max = (N3 * np.cos(theta + alpha_23), N3 * np.cos(theta - alpha_23))
     return sorted(min_max)
+# following three functions aren't really used.
+def number_tail(t2_coinc_window, t3_coinc_window):
+    n_tail = (
+        sum(
+            (t2_coinc_window + 1 + np.arange(0, t2_coinc_window+1)) * (t3_coinc_window + 1 + np.arange(0, t2_coinc_window+1))
+        ) + \
+        sum(
+            (2* t2_coinc_window + 1) * (t3_coinc_window + 1 + np.arange(t2_coinc_window+1, t3_coinc_window+1))
+        )
+    )
+    return n_tail
+
+def number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window):
+    """Assumes t3_coinc_window>t2_coinc_window, and tlen is the number of time samples."""
+    n_tail = number_tail(t2_coinc_window, t3_coinc_window)
+    T_2 = 2 * t2_coinc_window + 1
+    T_3 = 2 * t3_coinc_window + 1
+    n_middle = (tlen - 2*(t3_coinc_window+1)) * T_2 * T_3
+    n_c = 2 * n_tail + n_middle
+    return n_c
+
+def get_i_j_k(coinc_idx, tlen, t2_coinc_window, t3_coinc_window, precalculated_idxs=None):
+    """Get the indices i,j,k of the detector timeseries corresponding to 
+    coincident index coinc_idx. Assumes 3 detectors, t3_coinc_window>t2_coinc_window, 
+    and tlen is the number of analyzed time samples."""
+    if coinc_idx < 0:
+        raise ValueError("indices cannot be negative.")
+    n_c = number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window)
+    n_tail = number_tail(t2_coinc_window, t3_coinc_window)
+    largest_window = max(t2_coinc_window, t3_coinc_window)
+    T_2 = 2 * t2_coinc_window + 1
+    T_3 = 2 * t3_coinc_window + 1
+    if (coinc_idx > n_tail-1)&(coinc_idx < n_c-n_tail):
+        i, remainder = divmod(coinc_idx - n_tail, T_2 * T_3)
+        i += largest_window + 1
+        j, remainder_2 = divmod(remainder, T_3)
+        j += i - (t2_coinc_window)
+        k = remainder_2 + i - (t3_coinc_window)
+    else:
+        if precalculated_idxs is None:
+            precalculated_idxs = get_indices_jit_3_ifo(2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window)
+        
+        if not (coinc_idx > (n_tail-1)):
+            # at the beginning
+            i, j, k = precalculated_idxs[coinc_idx]
+        else:
+            # at the end
+            i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + tlen - (2*t3_coinc_window + 2)
+    return i, j, k
+
+def max_number_timeslides(idx_onsource, t2_coinc_window, t3_coinc_window):
+    nifo = shape(idx_onsource)[-1]
+    T_2 = (2*t2_coinc_window+1)
+    if nifo == 2:
+        n_incr = T_2**2
+    elif nifo == 3:
+        T_3 = (2*t3_coinc_window+1)
+        T_23 = (2*t23_coinc_window+1)
+        n_incr = T_2 * T_3 * (max(T_2, T_3) + T_23)
+    n_c = len(idx_onsource)
+    n_slides = n_c / float(n_incr) - 1
+    return int(n_slides)
+
+def perform_timeslide(idx_onsource, slide_no, t2_coinc_window, t3_coinc_window):
+    """Returns a copy of idx_combinations with the time indexes slid so they are no longer coincident"""
+    idx = idx_onsource.copy()
+    nifo = shape(idx)[-1]
+    T_2 = (2*t2_coinc_window+1)
+    if nifo == 2:
+        n2_incr = T_2**2 * slide_no
+        assert n2_incr < len(idx), "too many timeslides"
+        idx[:,1] = np.roll(idx[:,1], n2_incr)
+    elif nifo == 3:
+        T_3 = (2*t3_coinc_window+1)
+        T_23 = (2*t23_coinc_window+1)
+        n2_incr = T_2 * T_3 * max(T_2, T_3) * slide_no
+        n3_incr = T_2 * T_3 * (max(T_2, T_3) + T_23) * slide_no
+        assert n2_incr < len(idx), "too many timeslides"
+        idx[:,1] = np.roll(idx[:,1], n2_incr)
+        idx[:,2] = np.roll(idx[:,2], n3_incr)
+    return idx
 
 @njit
 def three_det_sum_idx_jit(t1, t2, t3, idx):
@@ -135,19 +216,18 @@ def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
         return get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype)
     elif 2*max(t2_coinc_window, t3_coinc_window) > tlen:
         return get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window, dtype)
+    T_2 = 2 * t2_coinc_window + 1
+    T_3 = 2 * t3_coinc_window + 1
     # forgetting the tails at first
     largest_window = max(t2_coinc_window, t3_coinc_window)
-    idx_1_mid = np.arange(tlen - 2*(t3_coinc_window+1), dtype=dtype).repeat( \
-        (2*t2_coinc_window+1)*(2*t3_coinc_window+1) \
-    ) + largest_window + 1
+    idx_1_mid = np.arange(tlen - (T_2+1), dtype=dtype).repeat(T_2 * T_3) \
+        + largest_window + 1
     idx_2_mid = idx_1_mid + np.tile(
-        np.arange(-t2_coinc_window, t2_coinc_window+1, dtype=dtype).repeat(2*t3_coinc_window+1), 
-        (tlen - 2*(t3_coinc_window+1))
-    )
+        np.arange(-t2_coinc_window, t2_coinc_window+1, dtype=dtype).repeat(T_3), 
+        (tlen - (T_3+1)))
     idx_3_mid = idx_1_mid + np.tile(
         np.arange(-t3_coinc_window, t3_coinc_window+1, dtype=dtype), 
-        (tlen - 2*(t3_coinc_window+1)) * (2*t2_coinc_window+1)
-    )
+        (tlen - (T_3+1)) * T_2)
     idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit_3_ifo(
         2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window, dtype=dtype).T
     # now get the tails
