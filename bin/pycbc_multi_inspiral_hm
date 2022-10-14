@@ -367,6 +367,9 @@ with ctx:
                         snr_2_filter, det_idx, i_max = \
                             hm_utils.maximize_snr_per_timepoint(
                                 network_snr_2_filter, det_idx, check_sorted=True)
+                        err_msg = "the max SNR before and after maximizing over "
+                        err_msg += "time is different. This shouldn't be possible"
+                        assert max(network_snr_2_filter) == max(snr_2_filter), err_msg
                         snr_2_filter_rss = network_snr_2_filter_rss[mask][i_max]
                         num_events = len(det_idx)
                         logging.info(f"{num_events} unique times have "

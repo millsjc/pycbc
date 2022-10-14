@@ -387,9 +387,6 @@ def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
         check_sorted=check_sorted)]
     snrs = snrs[i_max[0]]
     det_idx = det_idx[i_max[0]]
-#     # check if sorted after first step as more efficient and 
-#     # will likely still catch it.
-#     if check_was_sorted: check_time_idx_is_sorted(det_idx[:,0])
     for i in range(1, nifos):
         sort_idx = np.argsort(det_idx[:,i])
         snrs = snrs[sort_idx]
