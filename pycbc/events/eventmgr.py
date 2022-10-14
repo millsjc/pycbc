@@ -873,28 +873,49 @@ class EventManagerCoherent(EventManagerMultiDetBase):
 
 class EventManagerHM(EventManagerCoherent):
     def cluster_template_network_events_single_ifo(
-        self, tcolumn, column, window_size, ifo):
+        self, tcolumn, column, window_size, ifo, num_timeslides):
         """ Cluster the internal events over the named column. Uses a network
         column and a single ifo's tcolumn.
         """
-        cvec = self.template_event_dict['network'][column]
-        tvec = self.template_event_dict[ifo][tcolumn]
+        slide_ids = self.template_event_dict['network']["timeslide_id"]
+        all_events = numpy.arange(len(slide_ids))
         if window_size == 0:
-            indices = numpy.arange(len(tvec))
+            indices = all_events
         else:
-            indices = findchirp_cluster_over_window(tvec, cvec, window_size)
+            indices = []
+            for timeslide_id in range(0, num_timeslides + 1):
+                mask = slide_ids == timeslide_id
+                cvec = self.template_event_dict['network'][column][mask]
+                tvec = self.template_event_dict[ifo][tcolumn][mask]
+                idx = findchirp_cluster_over_window(
+                    tvec, cvec, window_size)
+                indices.extend(all_events[mask][idx])
         for key in self.template_event_dict:
             self.template_event_dict[key] = numpy.take(
                 self.template_event_dict[key], indices)
 
-    def finalize_template_events(self, tcolumn, column, ifo):
+    def finalize_template_events(self, tcolumn, column, ifo_list, num_timeslides):
         # check the fringes, and remove any duplicate events
-        cvec = self.template_event_dict['network'][column]
-        tvec = self.template_event_dict[ifo][tcolumn]
-        indices = hm_utils.maximal_coinc_in_ifo(cvec, tvec)
-        for key in self.template_event_dict:
-            self.template_event_dict[key] = numpy.take(
-                self.template_event_dict[key], indices)
+        # This also currently picks the loudest template at each
+        # timepoint.
+        slide_ids = self.template_event_dict['network']["timeslide_id"]
+        all_events = numpy.arange(len(slide_ids))
+        if len(all_events) > 0:
+            indices = []
+            for timeslide_id in range(0, num_timeslides + 1):
+                mask = slide_ids == timeslide_id
+                # move on if no events
+                if sum(mask) == 0: continue
+                cvec = self.template_event_dict['network'][column][mask]
+                det_idx = numpy.array([
+                    self.template_event_dict[ifo][tcolumn][mask] 
+                    for ifo in ifo_list]).T
+                _, _, i_max = hm_utils.maximize_snr_per_timepoint(
+                    cvec, det_idx, check_sorted=True)
+                indices.extend(all_events[mask][i_max])
+            for key in self.template_event_dict:
+                self.template_event_dict[key] = numpy.take(
+                    self.template_event_dict[key], indices)
         super().finalize_template_events()
 
     def write_to_hdf(self, outname):
@@ -910,9 +931,8 @@ class EventManagerHM(EventManagerCoherent):
         f['snr_2_filter'] = network_events['snr_2_filter']
         f['snr_2_filter_rss'] = network_events['snr_2_filter_rss']
         f['nifo'] = network_events['nifo']
-        # f['latitude'] = network_events['latitude']
-        # f['longitude'] = network_events['longitude']
         f['template_id'] = network_events['template_id']
+        f['timeslide_id'] = network_events['timeslide_id']
         for ifo in self.ifos:
             # First add the ifo event ids to the network branch
             f[ifo + '_event_id'] = network_events[ifo + '_event_id']

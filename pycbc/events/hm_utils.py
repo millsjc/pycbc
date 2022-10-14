@@ -2,7 +2,9 @@
 2-filter triggers.
 """
 import numpy as np
+from math import ceil
 from numba import njit
+from pycbc import detector
 
 def angle_between_detectors(tau_12, tau_13, tau_23):
     """Calculate the angle between ifo2 and ifo3 viewed from ifo1.
@@ -24,6 +26,41 @@ def angle_between_detectors(tau_12, tau_13, tau_23):
     b, a, c = tau_12, tau_13, tau_23
     alpha_23 = np.arccos((a**2 + b**2 - c**2) / (2*a*b))
     return alpha_23
+
+def get_coincident_window(ifo_list, timing_error, sample_rate):
+    nifo = len(ifo_list)
+    if nifo>3: 
+        raise NotImplementedError("Cannot have more than 3 detectors.")
+    t2_coinc_window=None
+    t3_coinc_window=None
+    t23_coinc_window=None
+    alpha_23=None
+    segment_overlap = 0
+    if nifo>1:
+        # calculate coincident window.
+        ifo1 = detector.Detector(ifo_list[0])
+        ifo2 = detector.Detector(ifo_list[1])
+        time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
+        t2_coinc_window = int(ceil((
+            time_diff_12 + timing_error) * sample_rate))
+        segment_overlap = t2_coinc_window
+        if nifo>2:
+            ifo3 = detector.Detector(ifo_list[2])
+            time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
+            time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
+            if time_diff_12 > time_diff_13:
+                #FIXME: consider switching labels, ifo_list order and anything 
+                # else necessary to force this condition
+                raise NotImplementedError(
+                    "t3_coinc_window must be larger than t2_coinc window.")
+            alpha_23 = angle_between_detectors(
+                time_diff_12, time_diff_13, time_diff_23)
+            t3_coinc_window = int(ceil((
+                time_diff_13 + timing_error) * sample_rate))
+            t23_coinc_window = int(ceil((
+                time_diff_23 + timing_error) * sample_rate))
+            segment_overlap = max(segment_overlap, t3_coinc_window)
+    return t2_coinc_window,t3_coinc_window,segment_overlap,alpha_23,t23_coinc_window
 
 def check_time_delay_is_physical(n2, n3, N2, N3, alpha_23):
     """Check if the delay time between two detector combinations
@@ -138,8 +175,8 @@ def get_i_j_k(coinc_idx, tlen, t2_coinc_window, t3_coinc_window, precalculated_i
             i, j, k = precalculated_idxs[coinc_idx - (n_c+1)] + tlen - (2*t3_coinc_window + 2)
     return i, j, k
 
-def max_number_timeslides(idx_onsource, t2_coinc_window, t3_coinc_window):
-    nifo = shape(idx_onsource)[-1]
+def max_number_timeslides(idx_onsource, t2_coinc_window, t3_coinc_window, t23_coinc_window):
+    nifo = np.shape(idx_onsource)[-1]
     T_2 = (2*t2_coinc_window+1)
     if nifo == 2:
         n_incr = T_2**2
@@ -151,10 +188,10 @@ def max_number_timeslides(idx_onsource, t2_coinc_window, t3_coinc_window):
     n_slides = n_c / float(n_incr) - 1
     return int(n_slides)
 
-def perform_timeslide(idx_onsource, slide_no, t2_coinc_window, t3_coinc_window):
+def perform_timeslide(idx_onsource, slide_no, t2_coinc_window, t3_coinc_window, t23_coinc_window):
     """Returns a copy of idx_combinations with the time indexes slid so they are no longer coincident"""
     idx = idx_onsource.copy()
-    nifo = shape(idx)[-1]
+    nifo = np.shape(idx)[-1]
     T_2 = (2*t2_coinc_window+1)
     if nifo == 2:
         n2_incr = T_2**2 * slide_no
@@ -216,18 +253,19 @@ def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
         return get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype)
     elif 2*max(t2_coinc_window, t3_coinc_window) > tlen:
         return get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window, dtype)
-    T_2 = 2 * t2_coinc_window + 1
-    T_3 = 2 * t3_coinc_window + 1
     # forgetting the tails at first
     largest_window = max(t2_coinc_window, t3_coinc_window)
-    idx_1_mid = np.arange(tlen - (T_2+1), dtype=dtype).repeat(T_2 * T_3) \
-        + largest_window + 1
+    idx_1_mid = np.arange(tlen - 2*(t3_coinc_window+1), dtype=dtype).repeat( \
+        (2*t2_coinc_window+1)*(2*t3_coinc_window+1) \
+    ) + largest_window + 1
     idx_2_mid = idx_1_mid + np.tile(
-        np.arange(-t2_coinc_window, t2_coinc_window+1, dtype=dtype).repeat(T_3), 
-        (tlen - (T_3+1)))
+        np.arange(-t2_coinc_window, t2_coinc_window+1, dtype=dtype).repeat(2*t3_coinc_window+1), 
+        (tlen - 2*(t3_coinc_window+1))
+    )
     idx_3_mid = idx_1_mid + np.tile(
         np.arange(-t3_coinc_window, t3_coinc_window+1, dtype=dtype), 
-        (tlen - (T_3+1)) * T_2)
+        (tlen - 2*(t3_coinc_window+1)) * (2*t2_coinc_window+1)
+    )
     idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit_3_ifo(
         2*(t3_coinc_window+1), t2_coinc_window, t3_coinc_window, dtype=dtype).T
     # now get the tails
@@ -280,13 +318,41 @@ def snr_2_filter_and_threshold(snr_dom, snr_sub_perp, idx, threshold):
     mask = snr_2_filter > threshold
     return snr_2_filter[mask], idx[mask], mask
 
-def maximal_coinc_in_ifo(snrs, time_idx):
+@njit
+def _check_time_idx_is_sorted_bool(time_idx):
+    cond = [time_idx[i] <= time_idx[i+1] 
+        for i in range(len(time_idx)-1)]
+    return cond
+
+def check_time_idx_is_sorted(time_idx):
+    cond = _check_time_idx_is_sorted_bool(time_idx)
+    assert np.all(cond), "time_idx must be sorted"
+    
+def maximal_coinc_in_ifo(snrs, time_idx, check_sorted=True):
     """Choose the maximum network snr for each time point.
+    Requires time_idx to be sorted.
+    Parameters
+    ----------
+    snrs: numpy.array
+        SNR-like values to maximize over.
+    time_idx: numpy.array
+        Sorted time indices.
     Returns
     -------
     i_max: numpy.array
         The indices that maximize the snr.
     """
+    unsorted=False
+    if check_sorted:
+        try:
+            check_time_idx_is_sorted(time_idx)
+        except AssertionError:
+            unsorted=True
+            original_indices = np.arange(len(time_idx))
+            sort_idx = np.argsort(time_idx)
+            original_indices = original_indices[sort_idx]
+            snrs = snrs[sort_idx]
+            time_idx = time_idx[sort_idx]
     i_max = []
     j_start, j_end = 0, 0
     for c in np.unique(time_idx, return_counts=True)[1]:
@@ -294,4 +360,44 @@ def maximal_coinc_in_ifo(snrs, time_idx):
         i_max.append(np.argmax(snrs[j_start:j_end]) + j_start)
         j_start += c
     i_max = np.array(i_max)
+    if unsorted:
+        i_max = original_indices[i_max]
     return i_max
+
+def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
+    """Choose the maximum network snr for each time point in each detector.
+    Assumes three detector network.
+    Parameters
+    ----------
+    snrs: numpy.array
+        SNR-like values to maximize over.
+    det_idx: numpy.array2d
+        Time indices. Must be sorted in zeroth detector.
+    Returns
+    -------
+    snrs: numpy.array
+        The maximum SNR-like values.
+    det_idx: numpy.array2d
+        Maximum SNR time indices. Sorted in zeroth detector time.
+    i_max: numpy.array
+        The indices that maximize the snr.
+    """
+    nifos = np.shape(det_idx)[-1]
+    i_max = [maximal_coinc_in_ifo(snrs, det_idx[:,0], 
+        check_sorted=check_sorted)]
+    snrs = snrs[i_max[0]]
+    det_idx = det_idx[i_max[0]]
+#     # check if sorted after first step as more efficient and 
+#     # will likely still catch it.
+#     if check_was_sorted: check_time_idx_is_sorted(det_idx[:,0])
+    for i in range(1, nifos):
+        sort_idx = np.argsort(det_idx[:,i])
+        snrs = snrs[sort_idx]
+        det_idx = det_idx[sort_idx]
+        idx = maximal_coinc_in_ifo(snrs, det_idx[:,i], check_sorted=False)
+        i_max.append(i_max[i-1][sort_idx][idx])
+        snrs = snrs[idx]
+        det_idx = det_idx[idx]
+    # sort so that ifo 0 times are again in order.
+    sort_idx = np.argsort(det_idx[:,0])
+    return snrs[sort_idx], det_idx[sort_idx], i_max[-1][sort_idx]
