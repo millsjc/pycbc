@@ -16,3 +16,10 @@ test_hm/frames/*
 test_hm/playground/segments/*.json
 *.png
 *.hdf
+test_hm/TESTING-4096.hdf
+test_hm/older_fake_o3.sh
+test_hm/old_fake_o3.sh
+test_hm/injection-gw170817.xml
+test_hm/gw170817.sh
+test_hm/gw170817.sh
+test_hm/edit_old_fake_o3.sh
