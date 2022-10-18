@@ -184,8 +184,8 @@ class MarginalizedPhaseGaussianNoise(GaussianNoise):
                 # calculate inner products
                 hh_i = h[self._kmin[det]:kmax].inner(
                     h[self._kmin[det]:kmax]).real
-                hd_i = self._whitened_data[det][self._kmin[det]:kmax].inner(
-                    h[self._kmin[det]:kmax])
+                hd_i = h[self._kmin[det]:kmax].inner(
+                    self._whitened_data[det][self._kmin[det]:kmax])
             # store
             setattr(self._current_stats, '{}_optimal_snrsq'.format(det), hh_i)
             hh += hh_i
@@ -194,7 +194,159 @@ class MarginalizedPhaseGaussianNoise(GaussianNoise):
         return marginalize_likelihood(hd, hh, phase=True)
 
 
-class MarginalizedPolarization(BaseGaussianNoise, DistMarg):
+class MarginalizedTime(DistMarg, BaseGaussianNoise):
+    r""" This likelihood numerically marginalizes over time
+
+    This likelihood is optimized for marginalizing over time, but can also
+    handle marginalization over polarization, phase (where appropriate),
+    and sky location. The time series is interpolated using a
+    quadratic apparoximation for sub-sample times.
+    """
+    name = 'marginalized_time'
+
+    def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
+                 high_frequency_cutoff=None, normalize=False,
+                 **kwargs):
+
+        variable_params, kwargs = self.setup_marginalization(
+                               variable_params,
+                               **kwargs)
+
+        # set up the boiler-plate attributes
+        super(MarginalizedTime, self).__init__(
+            variable_params, data, low_frequency_cutoff, psds=psds,
+            high_frequency_cutoff=high_frequency_cutoff, normalize=normalize,
+            **kwargs)
+        # Determine if all data have the same sampling rate and segment length
+        if self.all_ifodata_same_rate_length:
+            # create a waveform generator for all ifos
+            self.waveform_generator = create_waveform_generator(
+                self.variable_params, self.data,
+                waveform_transforms=self.waveform_transforms,
+                recalibration=self.recalibration,
+                generator_class=generator.FDomainDetFrameTwoPolNoRespGenerator,
+                gates=self.gates, **kwargs['static_params'])
+        else:
+            # create a waveform generator for each ifo respestively
+            self.waveform_generator = {}
+            for det in self.data:
+                self.waveform_generator[det] = create_waveform_generator(
+                    self.variable_params, {det: self.data[det]},
+                    waveform_transforms=self.waveform_transforms,
+                    recalibration=self.recalibration,
+                    generator_class=generator.FDomainDetFrameTwoPolNoRespGenerator,
+                    gates=self.gates, **kwargs['static_params'])
+
+        self.dets = {}
+
+    def _nowaveform_loglr(self):
+        """Convenience function to set loglr values if no waveform generated.
+        """
+        return -numpy.inf
+
+    def _loglr(self):
+        r"""Computes the log likelihood ratio,
+
+        .. math::
+
+            \log \mathcal{L}(\Theta) = \sum_i
+                \left<h_i(\Theta)|d_i\right> -
+                \frac{1}{2}\left<h_i(\Theta)|h_i(\Theta)\right>,
+
+        at the current parameter values :math:`\Theta`.
+
+        Returns
+        -------
+        float
+            The value of the log likelihood ratio.
+        """
+        from pycbc.filter import matched_filter_core
+
+        params = self.current_params
+        try:
+            if self.all_ifodata_same_rate_length:
+                wfs = self.waveform_generator.generate(**params)
+            else:
+                wfs = {}
+                for det in self.data:
+                    wfs.update(self.waveform_generator[det].generate(**params))
+        except NoWaveformError:
+            return self._nowaveform_loglr()
+        except FailedWaveformError as e:
+            if self.ignore_failed_waveforms:
+                return self._nowaveform_loglr()
+            else:
+                raise e
+
+        sh_total = hh_total = 0.
+        snr_estimate = {}
+        cplx_hpd = {}
+        cplx_hcd = {}
+        hphp = {}
+        hchc = {}
+        hphc = {}
+        for det, (hp, hc) in wfs.items():
+            # the kmax of the waveforms may be different than internal kmax
+            kmax = min(max(len(hp), len(hc)), self._kmax[det])
+            slc = slice(self._kmin[det], kmax)
+
+            # whiten both polarizations
+            hp[self._kmin[det]:kmax] *= self._weight[det][slc]
+            hc[self._kmin[det]:kmax] *= self._weight[det][slc]
+
+            hp.resize(len(self._whitened_data[det]))
+            hc.resize(len(self._whitened_data[det]))
+            cplx_hpd[det], _, _ = matched_filter_core(
+                                 hp,
+                                 self._whitened_data[det],
+                                 low_frequency_cutoff=self._f_lower[det],
+                                 high_frequency_cutoff=self._f_upper[det],
+                                 h_norm=1)
+            cplx_hcd[det], _, _ = matched_filter_core(
+                                 hc,
+                                 self._whitened_data[det],
+                                 low_frequency_cutoff=self._f_lower[det],
+                                 high_frequency_cutoff=self._f_upper[det],
+                                 h_norm=1)
+
+            hphp[det] = hp[slc].inner(hp[slc]).real
+            hchc[det] = hc[slc].inner(hc[slc]).real
+            hphc[det] = hp[slc].inner(hc[slc]).real
+
+            snr_proxy = ((cplx_hpd[det] / hphp[det] ** 0.5).squared_norm() +
+                         (cplx_hcd[det] / hchc[det] ** 0.5).squared_norm())
+            snr_estimate[det] = (0.5 * snr_proxy) ** 0.5
+
+        self.snr_draw(snr_estimate)
+
+        for det in wfs:
+            if det not in self.dets:
+                self.dets[det] = Detector(det)
+            fp, fc = self.dets[det].antenna_pattern(
+                                    params['ra'],
+                                    params['dec'],
+                                    params['polarization'],
+                                    params['tc'])
+            dt = self.dets[det].time_delay_from_earth_center(params['ra'],
+                                                             params['dec'],
+                                                             params['tc'])
+            dtc = params['tc'] + dt
+            cplx_hd = fp * cplx_hpd[det].at_time(dtc,
+                                                 interpolate='quadratic')
+            cplx_hd += fc * cplx_hcd[det].at_time(dtc,
+                                                  interpolate='quadratic')
+            hh = (fp * fp * hphp[det] +
+                  fc * fc * hchc[det] +
+                  2.0 * fp * fc * hphc[det])
+
+            sh_total += cplx_hd
+            hh_total += hh
+
+        loglr = self.marginalize_loglr(sh_total, hh_total)
+        return loglr
+
+
+class MarginalizedPolarization(DistMarg, BaseGaussianNoise):
     r""" This likelihood numerically marginalizes over polarization angle
 
     This class implements the Gaussian likelihood with an explicit numerical
@@ -209,17 +361,11 @@ class MarginalizedPolarization(BaseGaussianNoise, DistMarg):
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
                  high_frequency_cutoff=None, normalize=False,
                  polarization_samples=1000,
-                 marginalize_phase=False,
                  **kwargs):
 
-        self.polarization_samples = int(polarization_samples)
-        self.pol = numpy.linspace(0, 2*numpy.pi, self.polarization_samples)
-
-        variable_params, kwargs = self.setup_distance_marginalization(
+        variable_params, kwargs = self.setup_marginalization(
                                variable_params,
-                               marginalize_phase=marginalize_phase,
-                               marginalize_vector='polarization',
-                               marginalize_vector_params=self.pol,
+                               polarization_samples=polarization_samples,
                                **kwargs)
 
         # set up the boiler-plate attributes
@@ -304,10 +450,11 @@ class MarginalizedPolarization(BaseGaussianNoise, DistMarg):
         for det, (hp, hc) in wfs.items():
             if det not in self.dets:
                 self.dets[det] = Detector(det)
-            fp, fc = self.dets[det].antenna_pattern(self.current_params['ra'],
-                                                    self.current_params['dec'],
-                                                    self.pol,
-                                                    self.current_params['tc'])
+            fp, fc = self.dets[det].antenna_pattern(
+                                    params['ra'],
+                                    params['dec'],
+                                    params['polarization'],
+                                    params['tc'])
 
             # the kmax of the waveforms may be different than internal kmax
             kmax = min(max(len(hp), len(hc)), self._kmax[det])
@@ -320,8 +467,8 @@ class MarginalizedPolarization(BaseGaussianNoise, DistMarg):
             # h = fp * hp + hc * hc
             # <h, d> = fp * <hp,d> + fc * <hc,d>
             # the inner products
-            cplx_hpd = self._whitened_data[det][slc].inner(hp[slc])  # <hp, d>
-            cplx_hcd = self._whitened_data[det][slc].inner(hc[slc])  # <hc, d>
+            cplx_hpd = hp[slc].inner(self._whitened_data[det][slc])  # <hp, d>
+            cplx_hcd = hc[slc].inner(self._whitened_data[det][slc])  # <hc, d>
 
             cplx_hd = fp * cplx_hpd + fc * cplx_hcd
 
@@ -346,7 +493,9 @@ class MarginalizedPolarization(BaseGaussianNoise, DistMarg):
                   return_peak=True)
 
         # store the maxl polarization
-        setattr(self._current_stats, 'maxl_polarization', self.pol[idx])
+        setattr(self._current_stats,
+                'maxl_polarization',
+                params['polarization'])
         setattr(self._current_stats, 'maxl_loglr', maxl)
 
         # just store the maxl optimal snrsq
@@ -509,10 +658,10 @@ class MarginalizedHMPolPhase(BaseGaussianNoise):
             if det not in self.dets:
                 self.dets[det] = Detector(det)
 
-            fp, fc = self.dets[det].antenna_pattern(self.current_params['ra'],
-                                                    self.current_params['dec'],
+            fp, fc = self.dets[det].antenna_pattern(params['ra'],
+                                                    params['dec'],
                                                     self.pol,
-                                                    self.current_params['tc'])
+                                                    params['tc'])
 
             # loop over modes and prepare the waveform modes
             # we will sum up zetalm = glm <ulm, d> + i glm <vlm, d>
@@ -540,7 +689,7 @@ class MarginalizedHMPolPhase(BaseGaussianNoise):
                 # add inclination, and pack into a complex number
                 import lal
                 glm = lal.SpinWeightedSphericalHarmonic(
-                    self.current_params['inclination'], 0, -2, l, m).real
+                    params['inclination'], 0, -2, l, m).real
 
                 if m not in zetas:
                     zetas[m] = 0j

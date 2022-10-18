@@ -122,7 +122,7 @@ def get_version_info():
         vinfo = _version_helper.generate_git_version_info()
     except:
         vinfo = vdummy()
-        vinfo.version = '2.0.dev5'
+        vinfo.version = '2.0.6dev'
         vinfo.release = 'False'
 
     with open('pycbc/version.py', 'wb') as f:
@@ -304,7 +304,7 @@ setup (
     packages = find_packages(),
     package_data = {'pycbc.workflow': find_files('pycbc/workflow'),
                     'pycbc.results': find_files('pycbc/results'),
-                    'pycbc.tmpltbank': find_files('pycbc/tmpltbank')},
+                    'pycbc.neutron_stars': find_files('pycbc/neutron_stars')},
     ext_modules = ext,
     python_requires='>=3.7',
     classifiers=[

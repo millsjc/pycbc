@@ -240,12 +240,62 @@ class TimeSeries(Array):
     sample_times = property(get_sample_times,
                             doc="Array containing the sample times.")
 
-    def at_time(self, time, nearest_sample=False):
+    def at_time(self, time, nearest_sample=False, interpolate=None):
         """ Return the value at the specified gps time
+
+        Parameters
+        ----------
+        nearest_sample: bool
+            Return the sample at the time nearest to the chosen time rather
+            than rounded down.
+        interpolate: str, None
+            Return the interpolated value of the time series. Choices
+            are simple linear or quadratic interpolation.
         """
+        if interpolate == 'linear':
+            i = (time - float(self.start_time))*self.sample_rate
+            di = i - int(i)
+            i = int(i)
+            a = self[i]
+            b = self[i+1]
+            return a + (b - a) * di
+        elif interpolate == 'quadratic':
+            ir = (time - float(self.start_time))*self.sample_rate
+            i = _numpy.floor(_numpy.asarray(ir)).astype(int)
+            di = ir - i
+            c = self.data[i]
+            xr = self.data[i + 1] - c
+            xl = self.data[i - 1] - c
+            a = 0.5 * (xr + xl)
+            b = 0.5 * (xr - xl)
+            ans = a * di**2.0 + b * di + c
+            return ans
+
         if nearest_sample:
             time += self.delta_t / 2.0
         return self[int((time-self.start_time)*self.sample_rate)]
+
+    def at_times(self, times, nearest_sample = False):
+        """ Return an array of values at the specified gps times
+
+        Parameters
+        ----------
+        times: array of floats
+            The times whose values are needed
+        nearest_sample: bool
+            Return the samples at the times nearest to the chosen times rather
+            than rounded down.
+
+        Returns
+        -------
+        values: array of floats
+            The values of the timeseries at the given times
+        """
+
+        if nearest_sample:
+            times += self.delta_t / 2.0
+        elapsed_times = times - self.start_time
+        return self[(elapsed_times * self.sample_rate).astype('int')]
 
     def __eq__(self,other):
         """
