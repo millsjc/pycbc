@@ -1,6 +1,7 @@
-pycbc_multi_inspiral_hm --fake-strain 'zeroNoise' \
---allow-zero-padding \
+pycbc_multi_inspiral_hm \
+--fake-strain H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
 --injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
+--allow-zero-padding \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
 --channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \
 --gps-start-time 1187008870 --gps-end-time 1187008886 \
@@ -15,8 +16,9 @@ pycbc_multi_inspiral_hm --fake-strain 'zeroNoise' \
 --output TESTING-512.hdf \
 --instruments H1 L1 V1 \
 --bank-file GW190521_template.hdf \
---coinc-threshold 7.0 --verbose 
+--coinc-threshold 7.0 --verbose --num-timeslides 2
 
+#--injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
 #--ra 0.644911865031637 \
 #--dec 0.810795263791696 --trigger-time 1187008882 \
 #--gps-start-time 1187008374 --gps-end-time 1187008886 \
