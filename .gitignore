@@ -14,3 +14,5 @@ test_hm/playground/.ipynb_checkpoints/*
 test_hm/TESTING-4096.hdf
 test_hm/frames/*
 test_hm/playground/segments/*.json
+*.png
+*.hdf
