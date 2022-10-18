@@ -611,11 +611,8 @@ class MatchedFilterControlHM(object):
         analyze = self.segments[segnum].analyze
         snr_2_filter_rss = numpy.sqrt(
             abs(norm_dom * self.snr_mem_dom[analyze])**2 + \
-            abs(norm_sub * self.snr_mem_sub[analyze])**2)
+            abs(norm_sub * self.snr_mem_sub[analyze])**2).real()
 
-        # rho_2_filt = abs(np.sqrt(np.sum(
-        #     snr_dom_array * snr_dom_array.conj() + 
-        #     snr_sub_array * snr_sub_array.conj(), axis=0)))
         idx, snr_2_filt_rss_above_thresh = events.threshold_only(snr_2_filter_rss,
                                           self.snr_threshold)
         logging.info("%s points above threshold" % str(len(idx)))
