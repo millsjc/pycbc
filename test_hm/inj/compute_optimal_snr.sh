@@ -8,7 +8,11 @@ pycbc_optimal_snr \
 --f-low 20 \
 --verbose
 
-
-        # new_inj_table["network_optimal_snr"] = np.sqrt(np.sum(
-        #     new_inj_table[f"{ifo}_optimal_snr"] for ifo in opts.ifos
-        # ))
+result=$(python <<EOF
+import h5py, numpy as np
+with h5py.File("bbh-3dets_snr.hdf", "r+") as f:
+    f["network_optimal_snr"] = np.sqrt(
+        np.sum([np.array(f[f"optimal_snr_{ifo}"])**2
+                for ifo in ["H1", "L1", "V1"]], 0))
+EOF
+)

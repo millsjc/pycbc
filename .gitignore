@@ -23,3 +23,5 @@ test_hm/injection-gw170817.xml
 test_hm/gw170817.sh
 test_hm/gw170817.sh
 test_hm/edit_old_fake_o3.sh
+test_hm/inj/.ipynb_checkpoints/check_bank-checkpoint.ipynb
+test_hm/inj/.ipynb_checkpoints/check_injection_distributions-checkpoint.ipynb
