@@ -433,7 +433,8 @@ def draw(rtype):
         p = bank.keys()
         p = [k for k in p if k not in fdict]
         p.remove('approximant')
-        p.remove('mode_array')
+        if "mode_array" in p:    
+            p.remove('mode_array')
         bdata = numpy.array([bank.key(k)[-trail:] for k in p])
 
         kde = gaussian_kde(bdata)
@@ -442,7 +443,7 @@ def draw(rtype):
             params[k] = v
 
     params['approximant'] = numpy.array([args.approximant]*size)
-    if not args.filter_2_harmonics:
+    if not args.filter_2_harmonics and args.modes is not "None":
         mode_array =_mode_array_map(args.modes, args.approximant)
         params['mode_array'] = numpy.array([mode_array]*size, dtype=object)
     
