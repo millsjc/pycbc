@@ -951,12 +951,20 @@ class FilterBankHM(TemplateBank):
         self.max_template_length = max_template_length
         self.enable_compressed_waveforms = enable_compressed_waveforms
         self.waveform_decompression_method = waveform_decompression_method
-
+        try:
+            with h5py.File(filename, 'r') as f:
+                self.dom_harmonic = list(f["dom_harmonic"])
+                self.sub_harmonic = list(f["sub_harmonic"])
+        except:
+            logging.warning("failed to load dom and subdom harmonics from "
+                "hdf bankfile. Setting to default: 22 and 33.")
+            self.dom_harmonic = ["22"]*len(self.table)
+            self.sub_harmonic = ["33"]*len(self.table)
         super(FilterBankHM, self).__init__(filename, approximant=approximant,
             parameters=parameters, **kwds)
         self.ensure_standard_filter_columns(low_frequency_cutoff=low_frequency_cutoff)
-        self.dom_mode = ["22"]*len(self.table)
-        self.sub_mode = ["33"]*len(self.table)
+
+
         # Create a template duration field for subdominant harmonic
         self.table = self.table.add_fields(np.zeros(len(self.table),
                                     dtype=np.float32), 'template_duration_sub')
@@ -1004,7 +1012,7 @@ class FilterBankHM(TemplateBank):
             hp_dom, hp_sub = pycbc.waveform.get_lm_filters(
                 tempoutdom[0:self.filter_length], 
                 tempoutsub[0:self.filter_length], self.table[index],
-                self.dom_mode[index], self.sub_mode[index],
+                str(self.dom_harmonic[index]), str(self.sub_harmonic[index]),
                 approximant=approximant, f_lower=f_low, f_final=f_end,
                 delta_f=self.delta_f, delta_t=self.delta_t, distance=distance,
                 **self.extra_args)
