@@ -15,7 +15,6 @@ test_hm/TESTING-4096.hdf
 test_hm/frames/*
 test_hm/playground/segments/*.json
 *.png
-*.hdf
 test_hm/TESTING-4096.hdf
 test_hm/older_fake_o3.sh
 test_hm/old_fake_o3.sh
@@ -25,3 +24,4 @@ test_hm/gw170817.sh
 test_hm/edit_old_fake_o3.sh
 test_hm/inj/.ipynb_checkpoints/check_bank-checkpoint.ipynb
 test_hm/inj/.ipynb_checkpoints/check_injection_distributions-checkpoint.ipynb
+test_hm/TESTING-512.hdf
