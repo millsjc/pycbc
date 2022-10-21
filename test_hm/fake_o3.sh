@@ -1,23 +1,24 @@
 pycbc_multi_inspiral_hm \
 --fake-strain 'zeroNoise' \
---injection-file inj/bbh-3dets.hdf \
+--injection-file inj/bbh-3dets_snr.hdf \
 --allow-zero-padding \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
 --channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \
---gps-start-time 1267736448 --gps-end-time 1267736470 \
+--gps-start-time 1267651175 --gps-end-time 1267736468 \
 --strain-high-pass 15 --sample-rate 512 \
---segment-length 16 --segment-start-pad 4 \
+--segment-length 512 --segment-start-pad 4 \
 --segment-end-pad 2 --allow-zero-padding  --taper-data 1 \
 --low-frequency-cutoff 20 \
 --timing-error 0.005 \
---approximant 'IMRPhenomHM:mtotal<4' 'IMRPhenomHM:else' \
+--approximant 'IMRPhenomXHM:mtotal<4' 'IMRPhenomXHM:else' \
 --order -1 --snr-threshold 0.01 --cluster-window 0 \
 --processing-scheme cpu \
 --output TESTING-512.hdf \
---bank-file GW190521_template.hdf \
+--bank-file bank/full-correct-tau-xhm-spinning-2filter-listharms.hdf \
 --instruments H1 L1 V1 \
 --coinc-threshold 7.0 --verbose --num-timeslides 0
 
+#--bank-file bank/full-correct-tau-xhm-spinning-2filter-listharms.hdf \
 #--bank-file inj/bbh-3dets_bank.hdf \
 #--bank-file GW190521_template.hdf \
 #--injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
