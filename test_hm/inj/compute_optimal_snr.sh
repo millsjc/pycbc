@@ -1,6 +1,8 @@
+FILENAME=$1
+OUTFILE=`python -c 'print("{}_snr.hdf".format("'$FILENAME'".split(".")[0]))'`
 ../../bin/pycbc_optimal_snr \
---input-file bbh-3dets.hdf \
---output-file bbh-3dets_snr.hdf \
+--input-file $FILENAME \
+--output-file $OUTFILE \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
 --ifos "H1" "L1" "V1" \
 --sample-rate 512 \
@@ -10,7 +12,7 @@
 
 result=$(python <<EOF
 import h5py, numpy as np
-with h5py.File("bbh-3dets_snr.hdf", "r+") as f:
+with h5py.File("$OUTFILE", "r+") as f:
     f["network_optimal_snr"] = np.sqrt(
         np.sum([np.array(f[f"optimal_snr_{ifo}"])**2
                 for ifo in ["H1", "L1", "V1"]], 0))

@@ -15,4 +15,4 @@ python remove_inplane_spin.py $OUTFILE
 #generate identical bank
 python generate_identical_bank.py $OUTFILE
 
-source compute_optimal_snr.sh  
+source compute_optimal_snr.sh $OUTFILE 
