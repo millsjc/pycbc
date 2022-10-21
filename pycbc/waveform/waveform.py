@@ -1115,7 +1115,7 @@ def mode_array_map(lm, approx):
     else:
         mode_array_idx = None
 
-    if isinstance(lm, (list, numpy.ndarray, numpy.generic)):
+    if isinstance(lm, (list, numpy.ndarray)):
         mode_array = []
         for i_lm in lm:
             for j_lm in mode_array_dict[i_lm][:mode_array_idx]:
