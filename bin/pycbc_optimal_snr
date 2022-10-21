@@ -144,8 +144,10 @@ if __name__ == '__main__':
                         help='Data sample rate in Hz (default %(default)s)')
     parser.add_argument('--ifos', nargs='+',
                         help='Specify ifos for default HDF dataset output')
-    parser.add_argument('--snr-columns', nargs='+', action=MultiDetOptionAction,
-                        metavar='DETECTOR:COLUMN',
+    parser.add_argument('--snr-columns', default=None,
+                        #nargs='+', 
+                        #action=MultiDetOptionAction,
+                        #metavar='DETECTOR:COLUMN',
                         help='For sim_inspiral table output, specify columns'
                         ' to store the optimal SNR for each detector. COLUMN'
                         ' should be an existing sim_inspiral column containing'
