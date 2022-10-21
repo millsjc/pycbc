@@ -1,6 +1,6 @@
 OUTFILE='bbh-3dets.hdf'
 pycbc_create_injections \
---gps-start-time 1267736442 \
+--gps-start-time 1267651175 \
 --gps-end-time 1267736468 \
 --time-step 16 --time-window 5 \
 --seed 1234 \
