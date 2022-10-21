@@ -1,4 +1,4 @@
-pycbc_optimal_snr \
+../../bin/pycbc_optimal_snr \
 --input-file bbh-3dets.hdf \
 --output-file bbh-3dets_snr.hdf \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
