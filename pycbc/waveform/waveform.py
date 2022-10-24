@@ -1089,7 +1089,6 @@ def get_waveform_filter(out, template=None, **kwargs):
 
 def mode_array_map(lm, approx):
     '''Return the mode_array in pycbc.waveform format for requested mode.
-    FIXME: Something like this should live in lalsimulation / pycbc.waveform.
 
     Parameters
     ----------
