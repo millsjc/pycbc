@@ -14,8 +14,8 @@ pycbc_multi_inspiral_hm \
 --injection-file $WD/inj/$INJFILE \
 --allow-zero-padding \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
---channel-name ${h1chan} ${l1chan} ${v1chan}  \
---frame-type ${h1frame} ${l1frame} ${v1frame}
+--channel-name H1:${h1chan} L1:${l1chan} V1:${v1chan}  \
+--frame-type H1:${h1frame} L1:${l1frame} V1:${v1frame} \
 --gps-start-time $GPS_START --gps-end-time 1267736468 \
 --strain-high-pass 15 --sample-rate 512 \
 --segment-length 512 --segment-start-pad 4 \
