@@ -2,14 +2,20 @@ INJFILE='bbh-3dets-1hour.hdf'
 GPS_START=1267732868
 OUTFILE='TESTING-512-1hour-zeronoise.hdf'
 BANKFILE='full-correct-tau-xhm-spinning-2filter-listharms.hdf'
+h1chan=H1:GWOSC-4KHZ_R1_STRAIN
+l1chan=L1:GWOSC-4KHZ_R1_STRAIN
+v1chan=V1:GWOSC-4KHZ_R1_STRAIN
+h1frame=H1_GWOSC_O3b_4KHZ_R1
+l1frame=L1_GWOSC_O3b_4KHZ_R1
+v1frame=V1_GWOSC_O3b_4KHZ_R1
 #WD=/work/cameron.mills/projects/pycbc/test_hm
 #WD=/Users/camill/projects/pycbc/test_hm
 pycbc_multi_inspiral_hm \
---fake-strain 'zeroNoise' \
 --injection-file $WD/inj/$INJFILE \
 --allow-zero-padding \
 --psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
---channel-name H1:DCH-CLEAN_STRAIN_C02 L1:DCH-CLEAN_STRAIN_C02 V1:Hrec_hoft_16384Hz  \
+--channel-name ${h1chan} ${l1chan} ${v1chan}  \
+--frame-type ${h1frame} ${l1frame} ${v1frame}
 --gps-start-time $GPS_START --gps-end-time 1267736468 \
 --strain-high-pass 15 --sample-rate 512 \
 --segment-length 512 --segment-start-pad 4 \
@@ -24,6 +30,7 @@ pycbc_multi_inspiral_hm \
 --instruments H1 L1 V1 \
 --coinc-threshold 7.0 --verbose --num-timeslides 0
 
+# --fake-strain 'zeroNoise' \
 #--bank-file bank/full-correct-tau-xhm-spinning-2filter-listharms.hdf \
 #--bank-file inj/bbh-3dets_bank.hdf \
 #--bank-file GW190521_template.hdf \
