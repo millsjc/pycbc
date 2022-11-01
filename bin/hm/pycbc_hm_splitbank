@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+
+# Copyright (C) 2022 Cameron Mills
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 3 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+# Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+"""
+Split hdf bank files.
+"""
+import argparse
+import h5py
+import os
+import tqdm
+from pathlib import Path
+
+parser = argparse.ArgumentParser(description=__doc__)
+
+parser.add_argument("-V", "--verbose", action="store_true",
+                    help="print extra debugging information",
+                    default=False)
+parser.add_argument("--outdir", type=str)
+parser.add_argument("--inputfile", type=str)
+parser.add_argument("--num-splits", type=int)
+
+def slices(num_temps, num_splits):
+    stride = int(num_temps/num_splits)
+    start, stop = 0, stride + 1
+    while stop <= num_temps:
+        start += stride
+        stop += stride
+        yield slice(start, stop)
+
+def splitbank(inputfile, outdir, num_splits):
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    outfile = os.path.join(outdir, Path(inputfile).stem + "_SPLITBANK_{}.hdf")
+
+    with h5py.File(inputfile, "r") as h5in:
+        num_temps = len((list(h5in.values())[0]))
+        attributes = dict(h5in.attrs)
+        for i, s in tqdm.tqdm(
+            enumerate((slices(num_temps, num_splits))), 
+            desc="splitting the bank",
+            total=num_splits):
+            with h5py.File(outfile.format(i), "w") as h5out:
+                h5out.attrs.update(attributes)
+                for k, v in h5in.items():
+                    if not isinstance(v, h5py.Dataset):
+                        raise NotImplementedError("Currently can only copy "
+                            "type h5py.Dataset.")
+                    h5out[k] = v[s]
+
+args = parser.parse_args()
+
+splitbank(args.inputfile, args.outdir, args.num_splits)
