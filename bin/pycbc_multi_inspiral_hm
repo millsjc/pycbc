@@ -33,7 +33,9 @@ from pycbc import (
 from pycbc.events import ranking, EventManagerHM, hm_utils, threshold_only
 from pycbc.filter import MatchedFilterControlHM
 from pycbc.types import zeros, float32, complex64
+from pycbc import __version__
 import pdb
+
 # from pycbc.vetoes import sgchisq
 time_init = time.time()
 parser = argparse.ArgumentParser(description=__doc__)
@@ -94,6 +96,8 @@ parser.add_argument("--timing-error", type=float, default=0.005,
                          "possible coincident combinations.")
 parser.add_argument("--num-timeslides", type=int, default=0,
                     help="The number of timeslides to perform.")
+parser.add_argument("-V", "--version", action="version", version=__version__, 
+                    help="show version number and exit")
 # Add options groups
 strain.insert_strain_option_group_multi_ifo(parser)
 strain.StrainSegments.insert_segment_option_group_multi_ifo(parser)
