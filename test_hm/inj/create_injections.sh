@@ -1,5 +1,5 @@
-OUTFILE='bbh-3dets-1hour.hdf'
-GPS_START=1267732868
+OUTFILE='bbh-3dets-5mins.hdf'
+GPS_START=1267736168
 pycbc_create_injections \
 --gps-start-time ${GPS_START} \
 --gps-end-time 1267736468 \
