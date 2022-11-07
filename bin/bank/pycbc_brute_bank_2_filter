@@ -1,9 +1,10 @@
-#!/Users/camill/miniconda3/envs/pesummary-master/bin/python
+#!/usr/bin/env python
 """Generate a bank of templates using a brute force stochastic method.
 """
-import numpy, h5py, logging, argparse, numpy.random, sys
+import numpy, h5py, logging, argparse, numpy.random
 import pycbc.waveform, pycbc.filter, pycbc.types, pycbc.psd, pycbc.fft, pycbc.conversions
 from scipy.stats import gaussian_kde
+import pdb, sys
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--verbose', action='store_true')
@@ -118,6 +119,26 @@ def orthogonalize_modes(h_modes, psd=None, f_lower=20., fh=2048.0, dominant_mode
         h_perp = h_modes
     return h_perp
 
+def alm(l, m, iota):
+    l, m = int(l), int(m)
+    glm = pycbc.waveform.waveform_modes.get_glm
+    return 0.5 * (glm(l, m, iota) + (-1)**l * glm(l, -m, iota))
+
+def reweight_hp(hp, lm, iota, coa_phase):
+    """Calculate hp at different iota and coa_phase.
+    Assumes hp is calculated at iota=pi/2 and coa_phase=0.
+
+    Parameters
+    ----------
+    hp: pycbc.FrequencySeries
+        Reference hp calculated at iota=pi/2, phase=0
+    lm: str
+        (l,|m|) multipole (negative m added automatically) e.g. "22", "33"
+    """
+    l, m = int(lm[0]), int(lm[1])
+    hp = hp * numpy.exp(1j*m*coa_phase) * alm(l, m, iota) / alm(l, m, numpy.pi/2)
+    return hp
+
 class Shrinker(object):
     def __init__(self, data):
         self.data = data
@@ -151,7 +172,8 @@ class TriangleBank(object):
         if args.filter_2_harmonics: # only orthogonalize if saving
             hp.hp_perp = orthogonalize_modes(
                 hp.hp_modes, None, hp.gen.f_lower, hp.gen.fh, 
-                hp.dominant_mode, [hp.subdom_mode])
+                dominant_mode, [subdom_mode])
+            del hp.hp_modes
         self.waveforms.append(hp)
         for b in [hp.tbin - 1, hp.tbin, hp.tbin + 1]:
             if b in self.tbins:
@@ -306,24 +328,34 @@ class GenUniformWaveform(object):
             # only implemented in freq-domain ATM
             hp_modes = {}
             for lm in self.modes:
-                kwds["mode_array"] = pycbc.waveform.mode_array_map(lm, kwds["approximant"])
-
+                mode_array = pycbc.waveform.mode_array_map(lm, kwds["approximant"])
+                # get the filters with a reference inclination and phase.
+                params = {k:v for k, v in kwds.items() 
+                    if k not in ["coa_phase", "inclination"]}
                 hp_lm, _ = pycbc.waveform.get_fd_waveform(
                     delta_f=self.delta_f, f_lower=self.f_lower, f_final=self.fh,
-                    **kwds)
+                    mode_array=mode_array, inclination=numpy.pi/2, 
+                    coa_phase=0, **params)
                 hp_lm = hp_lm.astype(numpy.complex64)
-                hp_lm[self.kmin:-1] *= self.w
-                hp_lm.sigma = float(pycbc.filter.sigmasq(hp_lm, low_frequency_cutoff=self.f_lower) ** 0.5)
+                try:
+                    hp_lm[self.kmin:-1] *= self.w
+                except:
+                    pdb.set_trace()
+                hp_lm.sigma = float(pycbc.filter.sigmasq(
+                    hp_lm, low_frequency_cutoff=self.f_lower) ** 0.5)
                 hp_modes[lm] = hp_lm
             # rank modes
-            dominant_mode, subdom_mode = sorted(hp_modes, key=lambda x: hp_modes.get(x).sigma, reverse=True)[:2]
-
-            hp = hp_modes[dominant_mode] + hp_modes[subdom_mode]
-            
+            dominant_mode, subdom_mode = sorted(hp_modes, 
+                key=lambda x: hp_modes.get(x).sigma, reverse=True)[:2]
+            kwds["dom_harmonic"] = dominant_mode
+            kwds["sub_harmonic"] = subdom_mode
+            iota, phase = kwds.get("inclination", numpy.pi/2), kwds.get("coa_phase", 0)
+            hp_m = lambda lm: reweight_hp(hp_modes[lm], lm, iota, phase)
+            hp = hp_m(dominant_mode) + hp_m(subdom_mode)
         else:
             if kwds['approximant'] in pycbc.waveform.fd_approximants():
                 hp, hc = pycbc.waveform.get_fd_waveform(delta_f=self.delta_f,
-                                                    f_lower=self.f_lower, **kwds)
+                            f_lower=self.f_lower, **kwds)
                 if 'fratio' in kwds:
                     hp = hc * kwds['fratio'] + hp * (1 - kwds['fratio'])
             else:
@@ -331,10 +363,12 @@ class GenUniformWaveform(object):
                             pycbc.types.zeros(self.flen, dtype=numpy.complex64),
                             delta_f=self.delta_f, delta_t=self.delta_t,
                             f_lower=self.f_lower, **kwds)
-            hp.resize(self.flen)
-            hp = hp.astype(numpy.complex64)
+        hp.resize(self.flen)
+        hp = hp.astype(numpy.complex64)
+        try:
             hp[self.kmin:-1] *= self.w
-
+        except:
+            pdb.set_trace()
         s = float(1.0 / pycbc.filter.sigmasq(hp, low_frequency_cutoff=self.f_lower) ** 0.5)
         hp *= s
         hp.params = kwds
@@ -406,7 +440,7 @@ def draw(rtype):
             params[k] = v
 
     params['approximant'] = numpy.array([args.approximant]*size)
-    if not args.filter_2_harmonics and args.modes is not "None":
+    if not args.filter_2_harmonics and args.modes != "None":
         mode_array =pycbc.waveform.mode_array_map(args.modes, args.approximant)
         params['mode_array'] = numpy.array([mode_array]*size, dtype=object)
     
