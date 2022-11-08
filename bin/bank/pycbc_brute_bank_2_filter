@@ -112,7 +112,7 @@ def orthogonalize_modes(h_modes, psd=None, f_lower=20., fh=2048.0, dominant_mode
                 h_perp[lm] = h_p_lm
             else:
                 print("No power in mode %s" % lm)
-                h_perp[lm] = h
+                h_perp[lm] = h_modes[lm]
                 h_perp[lm].sigma = 0
     else:
         print("No power in any mode, returning original waveform")
@@ -120,11 +120,10 @@ def orthogonalize_modes(h_modes, psd=None, f_lower=20., fh=2048.0, dominant_mode
     return h_perp
 
 def alm(l, m, iota):
-    l, m = int(l), int(m)
     glm = pycbc.waveform.waveform_modes.get_glm
     return 0.5 * (glm(l, m, iota) + (-1)**l * glm(l, -m, iota))
 
-def reweight_hp(hp, lm, iota, coa_phase):
+def reweight_hp_to_iota_phase(hp, lm, iota, coa_phase):
     """Calculate hp at different iota and coa_phase.
     Assumes hp is calculated at iota=pi/2 and coa_phase=0.
 
@@ -172,7 +171,7 @@ class TriangleBank(object):
         if args.filter_2_harmonics: # only orthogonalize if saving
             hp.hp_perp = orthogonalize_modes(
                 hp.hp_modes, None, hp.gen.f_lower, hp.gen.fh, 
-                dominant_mode, [subdom_mode])
+                hp.dominant_mode, [hp.subdom_mode])
             del hp.hp_modes
         self.waveforms.append(hp)
         for b in [hp.tbin - 1, hp.tbin, hp.tbin + 1]:
@@ -214,6 +213,7 @@ class TriangleBank(object):
             d.tau0 = self.waveforms[c].tau0
             d.params = self.waveforms[c].params
             d.s = self.waveforms[c].s
+            d.matches = self.waveforms[c].matches
             self.waveforms[c] = d
 
 
@@ -350,7 +350,8 @@ class GenUniformWaveform(object):
             kwds["dom_harmonic"] = dominant_mode
             kwds["sub_harmonic"] = subdom_mode
             iota, phase = kwds.get("inclination", numpy.pi/2), kwds.get("coa_phase", 0)
-            hp_m = lambda lm: reweight_hp(hp_modes[lm], lm, iota, phase)
+            hp_m = lambda lm: reweight_hp_to_iota_phase(
+                hp_modes[lm], lm, iota, phase)
             hp = hp_m(dominant_mode) + hp_m(subdom_mode)
         else:
             if kwds['approximant'] in pycbc.waveform.fd_approximants():
@@ -363,12 +364,10 @@ class GenUniformWaveform(object):
                             pycbc.types.zeros(self.flen, dtype=numpy.complex64),
                             delta_f=self.delta_f, delta_t=self.delta_t,
                             f_lower=self.f_lower, **kwds)
-        hp.resize(self.flen)
-        hp = hp.astype(numpy.complex64)
-        try:
+            hp.resize(self.flen)
+            hp = hp.astype(numpy.complex64)
             hp[self.kmin:-1] *= self.w
-        except:
-            pdb.set_trace()
+
         s = float(1.0 / pycbc.filter.sigmasq(hp, low_frequency_cutoff=self.f_lower) ** 0.5)
         hp *= s
         hp.params = kwds
@@ -430,10 +429,10 @@ def draw(rtype):
         p = bank.keys()
         p = [k for k in p if k not in fdict]
         p.remove('approximant')
-        if "mode_array" in p:    
-            p.remove('mode_array')
-        bdata = numpy.array([bank.key(k)[-trail:] for k in p])
+        for k in ["dom_harmonic", "sub_harmonic", "mode_array"]:
+            if k in p: p.remove(k)
 
+        bdata = numpy.array([bank.key(k)[-trail:] for k in p])
         kde = gaussian_kde(bdata)
         points = kde.resample(size=size)
         for k, v in zip(p, points):
@@ -559,6 +558,7 @@ while tau0s < args.tau0_end:
     tau0s += args.tau0_crawl / 2
     tau0e += args.tau0_crawl / 2
 
+pdb.set_trace()
 o = h5py.File(args.output_file, 'w')
 for k in bank.keys():
     val = bank.key(k)
