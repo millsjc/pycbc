@@ -25,7 +25,7 @@ parser.add_argument("--modes", nargs="+", type=str, default="None",
     "automatically. Only with valid waveforms.")
 parser.add_argument("--filter-2-harmonics", action='store_true',
     help="Use additional harmonic maximized over amp and phase to construct the bank")
-parser.add_argument("--disable_triangle_inequality", action='store_true',
+parser.add_argument("--disable-triangle-inequality", action='store_true',
     help="Don't estimate matches with triangle inequality, calculate them all for real")
 parser.add_argument('--minimal-match', default=0.97, type=float)
 parser.add_argument('--buffer-length', default=2, type=float,
@@ -408,7 +408,8 @@ else:
 size = int(1.0 / tolerance)
 gen = GenUniformWaveform(args.buffer_length,
     args.sample_rate, args.low_frequency_cutoff, args.modes)
-bank = TriangleBank(args.use_triangle_inequality)
+bank = TriangleBank(
+    disable_triangle_inequality=args.disable_triangle_inequality)
 
 if args.input_file:
     f = h5py.File(args.input_file, 'r')
