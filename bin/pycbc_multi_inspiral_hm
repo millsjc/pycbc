@@ -24,17 +24,17 @@ and calculate the 2 filter SNR.
 import logging
 import time
 import argparse
-from math import sqrt, ceil
+from math import sqrt
 import numpy as np
 from pycbc import (
-    fft, init_logging, inject, opt, psd, scheme, strain, vetoes,
+    fft, init_logging, inject, opt, psd, scheme, strain,
     waveform, DYN_RANGE_FAC
 )
-from pycbc.events import ranking, EventManagerHM, hm_utils, threshold_only
+from pycbc.events import EventManagerHM, hm_utils, threshold_only
 from pycbc.filter import MatchedFilterControlHM
 from pycbc.types import zeros, float32, complex64
 from pycbc import __version__
-import pdb
+# import pdb
 
 # from pycbc.vetoes import sgchisq
 time_init = time.time()
@@ -46,7 +46,7 @@ parser.add_argument("--output", type=str)
 parser.add_argument("--instruments", nargs="+", type=str, required=True,
                     help="List of instruments to analyze.")
 parser.add_argument("--bank-file", type=str)
-#FIXME: below isn't used as described anymore. Merely acts as a first stage 
+# FIXME: below isn't used as described anymore. Merely acts as a first stage 
 # to check if nothing in segment meets this.
 parser.add_argument("--snr-threshold", type=float,
                     help="SNR threshold for trigger generation")
@@ -115,7 +115,7 @@ ifo_list = args.instruments
 # the same order.
 ifo_list.sort()
 nifo = len(ifo_list)
-assert nifo>1 or args.num_timeslides==0, "Cannot timeslide single ifo analyses."
+assert nifo > 1 or args.num_timeslides == 0, "Cannot timeslide single ifo analyses."
 t2_coinc_window, t3_coinc_window, segment_overlap, alpha_23, \
     t23_coinc_window = hm_utils.get_coincident_window(
         ifo_list, args.timing_error, args.sample_rate[ifo_list[0]])
@@ -136,16 +136,18 @@ strain_segments_dict = strain.StrainSegments.from_cli_multi_ifos(
 analyze_slices = strain_segments_dict[ifo_list[0]].analyze_slices
 analyze_lengths = [asl.stop - asl.start for asl in analyze_slices]
 
-if nifo>1:
+if nifo > 1:
     logging.info("Calculating possible coincident combinations")
-    idx_combinations = {a_len: hm_utils.index_combinations(a_len, t2_coinc_window, 
-        t3_coinc_window, np.int64) for a_len in np.unique(analyze_lengths)}
+    idx_combinations = {
+        a_len: hm_utils.index_combinations(
+                a_len, t2_coinc_window, t3_coinc_window, np.int64)
+            for a_len in np.unique(analyze_lengths)}
     logging.info("Finished calculating possible coincident combinations")
-    if nifo>2:
+    if nifo > 2:
         logging.info("Removing unphysical combinations")
         for a_len, _idx_combinations in idx_combinations.items():
-            n2 = _idx_combinations[:,0] - _idx_combinations[:,1]
-            n3 = _idx_combinations[:,0] - _idx_combinations[:,2]
+            n2 = _idx_combinations[:, 0] - _idx_combinations[:, 1]
+            n3 = _idx_combinations[:, 0] - _idx_combinations[:, 2]
             _cond = hm_utils.check_time_delay_is_physical(
                 n2, n3, t2_coinc_window, t3_coinc_window, alpha_23)
             idx_combinations[a_len] = idx_combinations[a_len][_cond]
@@ -174,7 +176,7 @@ with ctx:
             assert(flen == strain_segments_dict[ifo].freq_len)
             assert(tlen == strain_segments_dict[ifo].time_len)
             assert(delta_f == strain_segments_dict[ifo].delta_f)
-    except:
+    except AssertionError:
         err_msg = "Sample rate, frequency spacing, frequency length "
         err_msg += "and time length must be consistent across ifos."
         raise ValueError(err_msg)
