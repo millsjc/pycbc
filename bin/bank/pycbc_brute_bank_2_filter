@@ -58,10 +58,15 @@ numpy.random.seed(args.seed)
 # fd approximants that return modes seperately via lalinference interface
 # update with more later. This list should live in waveform module.
 fd_approx_2_harm = ["IMRPhenomXHM", "IMRPhenomPXHM", "IMRPhenomHM"]
-if args.filter_2_harmonics and args.approximant not in fd_approx_2_harm:
-    errmsg = "If filter-2-harmonics is enabled, must use one of the"
-    errmsg += " following approximants: {}".format(fd_approx_2_harm)
-    raise NotImplementedError(errmsg)
+if args.filter_2_harmonics:
+    if args.approximant not in fd_approx_2_harm:
+        errmsg = "If filter-2-harmonics is enabled, must use one of the"
+        errmsg += " following approximants: {}".format(fd_approx_2_harm)
+        raise NotImplementedError(errmsg)
+    elif args.enable_sigma_bound:
+        errmsg = "enable-sigma-bound doesn't work when filter-2-harmonics " 
+        errmsg += "is enabled."
+        raise NotImplementedError(errmsg)
 
 fdict = {}
 if args.fixed_params:
@@ -155,10 +160,9 @@ class TriangleBank(object):
     """ A bank of templates that uses the triangle inequality to estimate
     matches based on prior ones.
     """
-    def __init__(self, p=None, disable_triangle_inequality=False):
+    def __init__(self, p=None):
         self.waveforms = p if p is not None else []
         self.tbins = {}
-        self.disable_triangle_inequality=disable_triangle_inequality
 
     def __len__(self):
         return len(self.waveforms)
@@ -237,6 +241,9 @@ class TriangleBank(object):
         else:
             matches = numpy.ones(len(self))
             r = self.range()
+        if args.filter_2_harmonics:
+            matches_sub = numpy.ones(len(self))
+            matches_dom = numpy.ones(len(self))
 
         msig = len(r)
 
@@ -260,6 +267,9 @@ class TriangleBank(object):
             j = inc.pop()
             if j is None:
                 hp.matches = matches[r]
+                if args.filter_2_harmonics:
+                    hp.matches_dom = matches_dom[r]
+                    hp.matches_sub = matches_sub[r]
                 hp.indices = r
                 logging.info("TADD MaxMatch:%0.3f Size:%i "
                              "AfterSigma:%i AfterTau0:%i Matches:%i"
@@ -267,16 +277,25 @@ class TriangleBank(object):
                 return False
 
             hc = self[j]
-            m = hp.gen.match(hp, hc)
+            if args.filter_2_harmonics:
+                m_dom, m_sub = hp.gen.match(hp, hc)
+                m = numpy.sqrt(m_dom**2 + m_sub**2)
+                matches_dom[j] = m_dom
+                matches_sub[j] = m_sub
+                # apply triangle inequality on each harmonic
+                maxmatches_dom = hc.matches_dom - m_dom + 1.10
+                maxmatches_sub = hc.matches_sub - m_sub + 1.10
+                maxmatches = numpy.sqrt(maxmatches_dom**2 + maxmatches_sub**2)
+            else:
+                m = hp.gen.match(hp, hc)
+                # apply triangle inequality
+                maxmatches = hc.matches - m + 1.10
             matches[j] = m
             mnum += 1
-            
-            if not self.disable_triangle_inequality:
-                # Update bounding match values, apply triangle inequality
-                maxmatches = hc.matches - m + 1.10
+            if not args.disable_triangle_inequality:
+                # Update bounding match values, using triangle inequality
                 update = numpy.where(maxmatches < matches[hc.indices])[0]
                 matches[hc.indices[update]] = maxmatches[update]
-
                 # Update where to calculate matches
                 skip_threshold = 1 - (1 - hp.threshold) * 2.0
                 inc.data = inc.data[matches[inc.data] > skip_threshold]
@@ -382,7 +401,9 @@ class GenUniformWaveform(object):
         return hp
 
     def match(self, hp, hc):
-        """Assumes templates have been divided by sqrt(psd) and normalized."""
+        """Assumes templates have been divided by sqrt(psd) and normalized.
+        Returns a tuple for each harmonic if filter_2_harmonics.
+        """
         if args.filter_2_harmonics:
             mode_mfs = [
                 abs(pycbc.filter.matched_filter(
@@ -390,8 +411,10 @@ class GenUniformWaveform(object):
                     high_frequency_cutoff=self.fh, sigmasq=1))
                 for hc_perp_lm in hc.hp_perp.values()
             ]
-            stat = numpy.sqrt((numpy.array(mode_mfs)**2).sum(0))
-            m = max(stat) #/ hp.sigma
+            # stat = numpy.sqrt((numpy.array(mode_mfs)**2).sum(0))
+            time_idx = numpy.argmax((numpy.array(mode_mfs)**2).sum(0))
+            # m = max(stat) #/ hp.sigma
+            m = (mode_mfs[0][time_idx], mode_mfs[1][time_idx])
         else:
             pycbc.filter.correlate(hp.view, hc.view, self.qtilde_view)
             self.ifft.execute()
@@ -408,8 +431,7 @@ else:
 size = int(1.0 / tolerance)
 gen = GenUniformWaveform(args.buffer_length,
     args.sample_rate, args.low_frequency_cutoff, args.modes)
-bank = TriangleBank(
-    disable_triangle_inequality=args.disable_triangle_inequality)
+bank = TriangleBank()
 
 if args.input_file:
     f = h5py.File(args.input_file, 'r')
