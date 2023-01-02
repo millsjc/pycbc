@@ -115,7 +115,7 @@ def orthogonalize_modes(h_modes, psd=None, f_lower=20., fh=2048.0, dominant_mode
                 h_p_lm = (h_sub - zeta * h_dom) * norm
                 h_p_lm.zeta = zeta
                 h_p_lm.norm = norm
-                h_p_lm.sigma = h_sub.sigma * norm
+                h_p_lm.sigma = h_sub.sigma / norm
                 h_perp[lm] = h_p_lm
             else:
                 print("No power in mode %s" % lm)
