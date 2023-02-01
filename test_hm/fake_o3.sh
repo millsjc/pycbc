@@ -1,8 +1,10 @@
-INJFILE='bbh-3dets-1hour.hdf'
-GPS_START=1267732868
-OUTFILE='TESTING-512-1hour-realdata-splitbank1.hdf'
+INJFILE='mini-bbh-3dets-5mins.hdf'
+#GPS_START=1267732868
+GPS_START=1187008374
+OUTFILE='MINI-TESTING-512-5mins-realdata.hdf'
 #BANKFILE='full-correct-tau-xhm-spinning-2filter-listharms.hdf'
-BANKFILE='splitbank/full-correct-tau-xhm-spinning-2filter-listharms_SPLITBANK_0.hdf'
+#BANKFILE='splitbank/full-correct-tau-xhm-spinning-2filter-listharms_SPLITBANK_0.hdf'
+BANKFILE='mini-bank.hdf'
 h1chan=H1:GWOSC-4KHZ_R1_STRAIN
 l1chan=L1:GWOSC-4KHZ_R1_STRAIN
 v1chan=V1:GWOSC-4KHZ_R1_STRAIN
@@ -41,4 +43,4 @@ pycbc_multi_inspiral_hm \
 #--dec 0.810795263791696 --trigger-time 1187008882 \
 #--gps-start-time 1187008374 --gps-end-time 1187008886 \
 #1187008860 --gps-end-time 1187008886
-#H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545
+
