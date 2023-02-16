@@ -443,12 +443,14 @@ def check_time_idx_is_sorted(time_idx):
 def maximal_coinc_in_ifo(snrs, time_idx, check_sorted=True):
     """Choose the maximum network snr for each time point.
     Requires time_idx to be sorted.
+
     Parameters
     ----------
     snrs: numpy.array
         SNR-like values to maximize over.
     time_idx: numpy.array
         Sorted time indices.
+
     Returns
     -------
     i_max: numpy.array
@@ -480,12 +482,14 @@ def maximal_coinc_in_ifo(snrs, time_idx, check_sorted=True):
 def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
     """Choose the maximum network snr for each time point in each detector.
     Assumes three detector network.
+
     Parameters
     ----------
     snrs: numpy.array
         SNR-like values to maximize over.
     det_idx: numpy.array2d
         Time indices. Must be sorted in zeroth detector.
+
     Returns
     -------
     snrs: numpy.array
