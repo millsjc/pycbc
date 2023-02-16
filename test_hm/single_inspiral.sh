@@ -1,0 +1,11 @@
+# -s 125676/H1-INSPIRAL_FULL_DATA_JOB3-1256768704-2021.hdf=125676/H1-INSPIRAL_FULL_DATA_JOB3-1256768704-2021.hdf 
+# -L gw-main -T 2021-11-08T19:25:37+00:00 
+h1frame=H1_GWOSC_O3b_4KHZ_R1
+BANKFILE='mini-bank.hdf'
+INJFILE='mini-bbh-3dets-512s.hdf'
+OUTFILE='INSP-H1-MINI-TESTING-512-5mins-realdata-INJECTIONS.hdf'
+WD=/Users/camill/projects/pycbc/test_hm
+pycbc_inspiral --pad-data 2 --strain-high-pass 9 --sample-rate 2048 --segment-length 512 --segment-end-pad 16 --allow-zero-padding  --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --psdvar-segment 8 --psdvar-short-segment 0.25 --psdvar-long-segment 512 --psdvar-psd-duration 8 --psdvar-psd-stride 4 --psdvar-low-freq 20 --psdvar-high-freq 480 --autogating-max-iterations 8 --autogating-threshold 25 --autogating-cluster 0.25 --autogating-width 0.125 --autogating-taper 0.125 --autogating-pad 16 --low-frequency-cutoff 10 --enable-bank-start-frequency  --cluster-window 1 --cluster-function symmetric --chisq-snr-threshold 5.25 --chisq-bins "max(0.72*get_freq('fSEOBNRv4Peak', params.mass1, params.mass2, params.spin1z, params.spin2z)**0.7, 11)" --newsnr-threshold 4.0 --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>30:20-15,20-30,20-45,20-60,20-75,20-90,20-105,20-120" --filter-inj-only  --finalize-events-template-rate 50000 --injection-window 4.5 --processing-scheme cpu --segment-start-pad 144 --snr-threshold 4.0 --keep-loudest-interval 1.072 --keep-loudest-num 100 --keep-loudest-log-chirp-window 0.4 --channel-name H1:GWOSC-4KHZ_R1_STRAIN  --bank-file $WD/bank/$BANKFILE --frame-files ./strain/H-${h1frame}-1267732480-4096.gwf --output $WD/inspiral/$OUTFILE --verbose --gps-start-time 1267735954 --gps-end-time 1267736466 --trig-start-time 1267735954 --trig-end-time 1267736466  --injection-file $WD/inj/$INJFILE 
+#--gps-start-time 1267732802 --gps-end-time 1267736466 --trig-start-time 1267733056 --trig-end-time 1267736466 
+# --gps-start-time 1267735956 --gps-end-time 1267736468 --trig-start-time 1267735956 --trig-end-time 1267736468
+#--output 126773/H1-INSPIRAL_FULL_DATA_JOB3-1267733056-3410.hdf --bank-file H1L1V1-BANK2HDF_SPLITBANK_BANK3_FULL_DATA-1267556504-208206.hdf --frame-files 126773/H-H1_GWOSC_O3b_4KHZ_R1-1267732480-4096.gwf
