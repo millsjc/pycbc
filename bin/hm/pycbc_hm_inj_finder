@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2019 Duncan Macleod
+# Copyright (C) 2023 Duncan Macleod, Cameron Mills
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -17,7 +17,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-"""Cluster triggers from a pyGRB run
+"""Determine found/missed injections from a pycbc_multi_inspiral_hm 2-filter run. 
 """
 
 import argparse
@@ -26,10 +26,6 @@ import os
 import re
 from collections import defaultdict
 from itertools import compress
-try:
-    from functools import reduce
-except ImportError:  # python < 2
-    pass
 
 import tqdm
 
@@ -39,31 +35,14 @@ import h5py
 
 from gwdatafind.utils import filename_metadata
 
-from ligo.segments import segmentlist
-from ligo.segments.utils import fromsegwizard
-
-from pycbc import __version__
+from pycbc import __version__, events
 from pycbc.inject import InjectionSet
 from pycbc.io import FieldArray
+from pycbc.hm_utils import TQDM_KW, read_hdf5_triggers, read_segment_files
 
-__author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
+__author__ = "Cameron Mills <cameron.mills@aei.mpg.de>"
 
 SPLIT_FILENAME = re.compile(r"_(SPLIT\d+)")
-
-NETWORK_IFO_EVENT_ID_REGEX = re.compile(
-    r"\Anetwork/(?P<ifo>[A-Z]1)_event_id\Z",
-)
-EVENT_ID_REGEX = re.compile(r"event_id\Z")
-
-TQDM_BAR_FORMAT = ("{desc}: |{bar}| "
-                   "{n_fmt}/{total_fmt} {unit} ({percentage:3.0f}%) "
-                   "[{elapsed} | ETA {remaining}]{postfix}")
-TQDM_KW = {
-    "ascii": " -=#",
-    "bar_format": TQDM_BAR_FORMAT,
-    "smoothing": 0.05,
-}
-
 
 # -- utilities ----------------------------------
 
@@ -72,78 +51,14 @@ def find_split_files(filelist, split):
         if (split is None and 'SPLIT' not in fn) or split in fn:
             yield fn
 
-
-def read_segment_files(segfiles):
-    def _read(name):
-        with open(name, "r") as f:
-            return fromsegwizard(f)
-
-    return segmentlist(reduce(
-        operator.or_,
-        map(_read, segfiles),
-        segmentlist()))
-
-
-def read_hdf5_triggers(inputfiles, verbose=False):
-    """Merge several HDF5 files into a single file
-
-    Parameters
-    ----------
-    inputfiles : `list` of `str`
-        the paths of the input HDF5 files to merge
-
-    outputfile : `str`
-        the path of the output HDF5 file to write
-    """
-    datasets = {}
-
-    def _scan_dataset(name, obj):
-        if not name.startswith("network") or not isinstance(obj, h5py.Dataset):
-            return
-        if NETWORK_IFO_EVENT_ID_REGEX.match(name):
-            return
-        shape = obj.shape
-        dtype = obj.dtype
-        try:
-            shape = numpy.sum(datasets[name][0] + shape, keepdims=True)
-        except KeyError:
-            pass
-        else:
-            assert dtype == datasets[name][1], (
-                "Cannot merge {0}/{1}, does not match dtype".format(
-                    obj.file.filename, name,
-                ))
-        datasets[name] = (shape, dtype)
-
-    # get list of datasets
-    datasets = {}
-    for filename in inputfiles:
-        with h5py.File(filename, 'r') as h5f:
-            h5f.visititems(_scan_dataset)
-
-    position = defaultdict(int)
-
-    out = {}
-
-    # create datasets
-    for dset, (shape, dtype) in datasets.items():
-        out[dset[8:]] = numpy.empty(shape, dtype=dtype)
-
-    # copy dataset contents
-    for filename in inputfiles:
-        with h5py.File(filename, 'r') as h5in:
-            for dset in datasets:
-                data = h5in[dset][:]
-                size = data.shape[0]
-                pos = position[dset]
-                if EVENT_ID_REGEX.search(dset):
-                    out[dset[8:]][pos:pos+size] = data + pos
-                else:
-                    out[dset[8:]][pos:pos+size] = data
-                position[dset] += size
-
-    return out
-
+def indices_from_eventids(net_ifo_eid, ifo_eid):
+    # spot check that eventids correspond to the index of the array.
+    # NB: This should already be the case, but just in case...
+    if net_ifo_eid[-1] != ifo_eid[-1]:
+        # if not, find the next matching index
+        net_ifo_eid = [next(i for i, _ in enumerate(ifo_eid) 
+                            if i == eid) for eid in net_ifo_eid]
+    return net_ifo_eid
 
 # -- parse command line -------------------------
 
@@ -254,9 +169,21 @@ with tqdm.tqdm(args.inj_files, desc="Finding injections",
 
         # read triggers
         triggers = read_hdf5_triggers(trigfiles)
-        time = triggers["end_time_gc"]
-        snr = triggers[args.rank_column]
-        event_id = triggers["event_id"]
+        
+        # use the mean ifo time to approximate geocent time. 
+        ifo_list = [k for k in triggers.keys() if k != "network"]
+        ifo_times = {}
+        for ifo in ifo_list:
+            net_ifo_eid = triggers["network"]["{}_event_id".format(ifo)]
+            ifo_eid = triggers[ifo]["event_id"]
+            # eventids should correspond to indices, but just in case..
+            net_ifo_eid = indices_from_eventids(net_ifo_eid, ifo_eid)
+            ifo_times[ifo] = triggers[ifo]["end_time"][net_ifo_eid]
+        time = [events.mean_if_greater_than_zero(v)[0] 
+                    for v in numpy.array(list(ifo_times.values())).T]
+
+        snr = triggers["network"][args.rank_column]
+        event_id = triggers["network"]["event_id"]
         time_sorting = time.argsort()
 
         # determine found or missed
@@ -280,10 +207,26 @@ with tqdm.tqdm(args.inj_files, desc="Finding injections",
                 missed.append(i)
             else:
                 found.append(i)
-                # FIXME: below line isn't used; remove?
+                # r-l == 1 means the injection has exactly one event 
+                # associated, while r-l>1 indicates more than one
+                # was associated within the window.
+                #FIXME: below line isn't used; remove?
                 eid = l if r - l == 1 else event_id[l + snr[l:r].argmax()]
-                for col in triggers:
-                    trigs[col].append(triggers[col][i])
+                for col in triggers["network"]:
+                    trigs[col].append(triggers["network"][col][i])
+                #FIXME: save triggers such that they are associated to the injection they found.
+                #--> should it really be a little i index above??
+                #FIXME: also have a number that indicates number of triggers associated to an injection.
+                #FIXME: also save individual ifo times/snrs:
+                for ifo in ifo_list:
+                    net_ifo_eid = triggers["network"]["{}_event_id".format(ifo)]
+                    ifo_eid = triggers[ifo]["event_id"]
+                    # eventids should correspond to indices, but just in case..
+                    net_ifo_eid = indices_from_eventids(net_ifo_eid, ifo_eid)
+                    for col in triggers[ifo]:
+                        if "/" not in col:
+                            trigs["{}_{}".format(ifo, col)] = triggers[ifo][col][net_ifo_eid]
+
 
         # record all injections
         if allinjections is None:
@@ -326,7 +269,7 @@ with h5py.File(outfilename, "w") as h5out:
         injs = injarr[injlist]
         for field in injs.fieldnames:
             grp[field] = injs[field]
-
+    # FIXME: associate the triggers below to an injection. 
     # write triggers
     netg = h5out.create_group("network")
     for col in trigs:

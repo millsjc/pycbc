@@ -8,6 +8,14 @@ from numba import njit
 
 from pycbc import detector
 
+TQDM_BAR_FORMAT = ("{desc}: |{bar}| "
+                   "{n_fmt}/{total_fmt} {unit} ({percentage:3.0f}%) "
+                   "[{elapsed} | ETA {remaining}]{postfix}")
+TQDM_KW = {
+    "ascii": " -=#",
+    "bar_format": TQDM_BAR_FORMAT,
+    "smoothing": 0.05,
+}
 
 def angle_between_detectors(tau_12, tau_13, tau_23):
     """Calculate the angle between ifo2 and ifo3 viewed from ifo1.
@@ -355,17 +363,17 @@ def detector_sum_and_threshold(snr_2_filt_rss, idx, threshold):
     """
     Parameters
     ----------
-    snr_2_filt_rss: numpy.array2d
+    snr_2_filt_rss: np.array2d
         zeroth index picks detector.
-    idx: numpy.array2d
+    idx: np.array2d
         The index combinations to sum over. Zeroth index picks detector.
     threshold: float
 
     Returns
     -------
-    network_snr_2_filt_rss: numpy.array
+    network_snr_2_filt_rss: np.array
         The network SNR for the events that survive the cut.
-    idx: numpy.array2d
+    idx: np.array2d
         The index combinations that survived the cut.
     """
     snr_2_filt_rss = abs(snr_2_filt_rss) ** 2
@@ -400,17 +408,17 @@ def snr_2_filter_and_threshold(snr_dom, snr_sub_perp, idx, threshold):
         _description_
     snr_sub_perp : pycbc.TimeSeries
         _description_
-    idx : numpy.array
+    idx : np.array
         _description_
     threshold : float
         SNR threshold
 
     Returns
     -------
-    snr_2_filter: numpy.array
+    snr_2_filter: np.array
         _description_
-    idx: numpy.array
-    mask: boolean numpy.array
+    idx: np.array
+    mask: boolean np.array
     """
     nifos = len(snr_dom)
     dom = np.array([snr_dom[i][idx[:, i]] for i in range(nifos)])
@@ -433,7 +441,7 @@ def check_time_idx_is_sorted(time_idx):
 
     Parameters
     ----------
-    time_idx : numpy.array
+    time_idx : np.array
         List of time indices.
     """
     cond = _check_time_idx_is_sorted_bool(time_idx)
@@ -446,14 +454,14 @@ def maximal_coinc_in_ifo(snrs, time_idx, check_sorted=True):
 
     Parameters
     ----------
-    snrs: numpy.array
+    snrs: np.array
         SNR-like values to maximize over.
-    time_idx: numpy.array
+    time_idx: np.array
         Sorted time indices.
 
     Returns
     -------
-    i_max: numpy.array
+    i_max: np.array
         The indices that maximize the snr.
     """
     unsorted = False
@@ -485,18 +493,18 @@ def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
 
     Parameters
     ----------
-    snrs: numpy.array
+    snrs: np.array
         SNR-like values to maximize over.
-    det_idx: numpy.array2d
+    det_idx: np.array2d
         Time indices. Must be sorted in zeroth detector.
 
     Returns
     -------
-    snrs: numpy.array
+    snrs: np.array
         The maximum SNR-like values.
-    det_idx: numpy.array2d
+    det_idx: np.array2d
         Maximum SNR time indices. Sorted in zeroth detector time.
-    i_max: numpy.array
+    i_max: np.array
         The indices that maximize the snr.
     """
     nifos = np.shape(det_idx)[-1]
@@ -515,3 +523,100 @@ def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
     # sort so that ifo 0 times are again in order.
     sort_idx = np.argsort(det_idx[:, 0])
     return snrs[sort_idx], det_idx[sort_idx], i_max[-1][sort_idx]
+
+
+# -- I/O utilities ----------------------------------
+
+def read_hdf5_triggers(inputfiles, verbose=False):
+    """Load several HDF5 trigger files into a single dictionary.
+
+    Parameters
+    ----------
+    inputfiles : `list` of `str`
+        the paths of the input HDF5 files to merge
+    """
+    import re
+    from collections import defaultdict
+    import h5py
+    NETWORK_IFO_EVENT_ID_REGEX = re.compile(
+    r"\Anetwork/(?P<ifo>[A-Z]1)_event_id\Z",
+    )
+    EVENT_ID_REGEX = re.compile(r"event_id\Z")
+    
+    datasets = {}
+
+    def _scan_dataset(name, obj):
+        if not isinstance(obj, h5py.Dataset):
+            return
+        shape = obj.shape
+        dtype = obj.dtype
+        try:
+            shape = np.sum(datasets[name][0] + shape, keepdims=True)
+        except KeyError:
+            pass
+        else:
+            assert dtype == datasets[name][1], (
+                "Cannot merge {0}/{1}, does not match dtype".format(
+                    obj.file.filename, name,
+                ))
+        datasets[name] = (shape, dtype)
+
+    # get list of datasets
+    datasets = {}
+    for filename in inputfiles:
+        with h5py.File(filename, 'r') as h5f:
+            h5f.visititems(_scan_dataset)
+
+    position = defaultdict(int)
+    ifo_eventid_increment = defaultdict(int)
+    
+    out = defaultdict(lambda: defaultdict(dict))
+
+    # create datasets
+    for dset, (shape, dtype) in datasets.items():
+        prefix = dset.split("/")[0]
+        key = dset[len(prefix)+1:]
+        out[prefix][key] = np.empty(shape, dtype=dtype)
+
+    # copy dataset contents
+    for filename in inputfiles:
+        with h5py.File(filename, 'r') as h5in:
+            for dset in datasets:
+                data = h5in[dset][:]
+                size = data.shape[0]
+                pos = position[dset]
+                prefix = dset.split("/")[0]
+                key = dset[len(prefix)+1:]
+                
+                if EVENT_ID_REGEX.search(dset):
+                    if NETWORK_IFO_EVENT_ID_REGEX.search(dset):
+                        # must increment eventids differently in this case
+                        ifo_eid_key = "{}/{}_{}".format(*dset[8:].split("_"))
+                        ifo_eid_incr = ifo_eventid_increment[ifo_eid_key]
+                        out[prefix][key][pos:pos+size] = data + ifo_eid_incr
+                        ifo_eid_size = h5in[ifo_eid_key].shape[0]
+                        ifo_eventid_increment[ifo_eid_key] += ifo_eid_size
+                    else:
+                        out[prefix][key][pos:pos+size] = data + pos
+                else:
+                    out[prefix][key][pos:pos+size] = data
+                position[dset] += size
+    return dict(out)
+
+def read_segment_files(segfiles):
+    import operator
+    try:
+        from functools import reduce
+    except ImportError:  # python < 2
+        pass
+    from ligo.segments import segmentlist   
+    from ligo.segments.utils import fromsegwizard
+
+    def _read(name):
+        with open(name, "r") as f:
+            return fromsegwizard(f)
+
+    return segmentlist(reduce(
+        operator.or_,
+        map(_read, segfiles),
+        segmentlist()))
