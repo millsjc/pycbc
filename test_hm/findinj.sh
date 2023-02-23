@@ -1,0 +1,1 @@
+/Users/camill/projects/pycbc/bin/hm/pycbc_hm_inj_finder -f inspiral/MINI-TESTING-512-realdata-INJECTIONS.hdf -j inj/mini-bbh-3dets-512s_snr.hdf -o ./MINI-TESTING-512-realdata-INJECTIONS-missedfound.hdf -W 1 -c 'snr_2_filter' -v
