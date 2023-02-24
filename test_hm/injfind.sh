@@ -1,0 +1,1 @@
+pycbc_coinc_hdfinjfind --injection-window 2.0 --optimal-snr-column H1:optimal_snr_H1 L1:optimal_snr_L1 V1:optimal_snr_V1 --template-bank bank/mini-bank.hdf --trigger-files inspiral/INSP-H1-MINI-TESTING-512-5mins-realdata-INJECTIONS.hdf --verbose --injection-files inj/
