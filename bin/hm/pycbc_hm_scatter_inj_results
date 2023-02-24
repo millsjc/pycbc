@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+# Copyright (C) 2023 Cameron Mills
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation; either version 3 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+# Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+import argparse
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Set up the argument parser
+parser = argparse.ArgumentParser(
+    description="Create scatter plot of found and triggers with SNR annotations"
+)
+parser.add_argument(
+    "--inj-file", type=str, help="name of the found missed injection HDF file"
+)
+parser.add_argument("--bank-file", type=str, help="name of the template bank HDF file")
+
+parser.add_argument(
+    "--output-file", type=str, help="name of the output file for the plot"
+)
+parser.add_argument(
+    "--x-param",
+    type=str,
+    default="mass1",
+    help="parameter for x-axis (default: mass1)",
+)
+parser.add_argument(
+    "--y-param",
+    type=str,
+    default="mass2",
+    help="parameter for y-axis (default: mass2)",
+)
+# Add optional argument for SNR threshold
+parser.add_argument(
+    "--snr-threshold",
+    type=float,
+    default=7.0,
+    help="SNR threshold for missed triggers (default: 7.0)",
+)
+
+# Parse the command line arguments
+args = parser.parse_args()
+
+# Load the "found", "missed", and "triggers" datasets
+with h5py.File(args.inj_file, "r") as file:
+    found_dataset = file["found"]
+    found_x = found_dataset[args.x_param][:]
+    found_y = found_dataset[args.y_param][:]
+    triggers_dataset = file["triggers"]
+    template_id = triggers_dataset["template_id"][:]
+    triggers_snr = triggers_dataset["snr_2_filter"][:]
+    missed_dataset = file["missed"]
+    missed_x = missed_dataset[args.x_param][:]
+    missed_y = missed_dataset[args.y_param][:]
+    missed_snr = missed_dataset["network_optimal_snr"][:]
+
+# Load the template params
+with h5py.File(args.bank_file, "r") as file:
+    # breakpoint()
+    triggers_x = file[args.x_param][:][template_id]
+    triggers_y = file[args.y_param][:][template_id]
+
+# Create a scatter plot
+fig, ax = plt.subplots()
+scatter_found = ax.scatter(found_x, found_y, color="red", label="Found Triggers")
+# Add missed triggers as black or red crosses based on SNR threshold
+missed_label = "Missed Triggers (SNR > {})".format(args.snr_threshold)
+missed_mask = missed_snr < args.snr_threshold
+if any(~missed_mask):
+    _ = ax.scatter(
+        missed_x[~missed_mask],
+        missed_y[~missed_mask],
+        marker="x",
+        color="red",
+        label=missed_label,
+    )
+if any(missed_mask):
+    _ = ax.scatter(
+        missed_x[missed_mask],
+        missed_y[missed_mask],
+        marker="x",
+        color="black",
+        label=missed_label.replace(">", "<"),
+    )
+scatter_triggers = ax.scatter(
+    triggers_x, triggers_y, c=triggers_snr, cmap="plasma", label="All Triggers"
+)
+plt.xlabel(args.x_param.capitalize())
+plt.ylabel(args.y_param.capitalize())
+plt.title("Found and All Triggers with SNR Annotations")
+
+# Add annotations for SNR values
+for i, txt in enumerate(triggers_snr):
+    ax.annotate("{:.1f}".format(txt), (triggers_x[i], triggers_y[i]))
+
+# Add lines connecting corresponding points in the found and triggers datasets
+ax.plot(
+    [found_x, triggers_x],
+    [found_y, triggers_y],
+    color="gray",
+    linestyle="dotted",
+)
+
+# Add a colorbar
+cbar = plt.colorbar(scatter_triggers)
+cbar.set_label("SNR")
+
+# Add a legend
+ax.legend()
+
+# Save the figure to the output file
+plt.savefig(args.output_file)
+
+plt.show()
