@@ -20,6 +20,22 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Set the figure size to 1.5 times the default size
+plt.rcParams["figure.figsize"] = [1.5 * f for f in plt.rcParams["figure.figsize"]]
+
+# Increase the size of all the fonts, labels, ticks, legends, and markers by a factor of 2
+font_increase = 2
+label_size = "large"
+plt.rcParams.update({
+    'font.size': font_increase*plt.rcParams['font.size'],
+    'axes.labelsize': label_size,
+    'axes.titlesize': label_size,
+    'xtick.labelsize': label_size,
+    'ytick.labelsize': label_size,
+    # 'legend.fontsize': label_size,
+    'lines.markersize': font_increase*plt.rcParams['lines.markersize'],
+})
+
 # Set up the argument parser
 parser = argparse.ArgumentParser(
     description="Create scatter plot of found and triggers with SNR annotations"
@@ -60,6 +76,7 @@ with h5py.File(args.inj_file, "r") as file:
     found_dataset = file["found"]
     found_x = found_dataset[args.x_param][:]
     found_y = found_dataset[args.y_param][:]
+    found_snr = found_dataset["network_optimal_snr"][:]
     triggers_dataset = file["triggers"]
     template_id = triggers_dataset["template_id"][:]
     triggers_snr = triggers_dataset["snr_2_filter"][:]
@@ -76,9 +93,9 @@ with h5py.File(args.bank_file, "r") as file:
 
 # Create a scatter plot
 fig, ax = plt.subplots()
-scatter_found = ax.scatter(found_x, found_y, color="red", label="Found Triggers")
+scatter_found = ax.scatter(found_x, found_y, marker="+", color="lime", label="Found")
 # Add missed triggers as black or red crosses based on SNR threshold
-missed_label = "Missed Triggers (SNR > {})".format(args.snr_threshold)
+missed_label = "Missed (SNR > {})".format(args.snr_threshold)
 missed_mask = missed_snr < args.snr_threshold
 if any(~missed_mask):
     _ = ax.scatter(
@@ -97,15 +114,18 @@ if any(missed_mask):
         label=missed_label.replace(">", "<"),
     )
 scatter_triggers = ax.scatter(
-    triggers_x, triggers_y, c=triggers_snr, cmap="plasma", label="All Triggers"
+    triggers_x, triggers_y, c=triggers_snr, cmap="plasma", label="Triggers"
 )
 plt.xlabel(args.x_param.capitalize())
 plt.ylabel(args.y_param.capitalize())
-plt.title("Found and All Triggers with SNR Annotations")
+plt.title("Found and Missed Injections with SNR Annotations")
 
 # Add annotations for SNR values
-for i, txt in enumerate(triggers_snr):
-    ax.annotate("{:.1f}".format(txt), (triggers_x[i], triggers_y[i]))
+for i, (trig_snr, opt_snr) in enumerate(zip(triggers_snr, found_snr)):
+    ax.annotate("{:.1f}".format(trig_snr), (triggers_x[i], triggers_y[i]))
+    ax.annotate("{:.1f}".format(opt_snr), (found_x[i], found_y[i]))
+for i, opt_snr in enumerate(missed_snr[~missed_mask]):
+    ax.annotate("{:.1f}".format(opt_snr), (missed_x[~missed_mask][i], missed_y[~missed_mask][i]))
 
 # Add lines connecting corresponding points in the found and triggers datasets
 ax.plot(
@@ -120,9 +140,9 @@ cbar = plt.colorbar(scatter_triggers)
 cbar.set_label("SNR")
 
 # Add a legend
-ax.legend()
+ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.4), ncol=2)
 
 # Save the figure to the output file
-plt.savefig(args.output_file)
+plt.savefig(args.output_file, bbox_inches="tight")
 
 plt.show()
