@@ -1,0 +1,9 @@
+universe = vanilla
+executable = /work/cameron.mills/projects/pycbc/test_hm/submissions/scripts/real_o3.sh
+getenv = True
+accounting_group = cbc.dev.hm_search
+log = /work/cameron.mills/projects/pycbc/test_hm/log/real_o3.log
+error = /work/cameron.mills/projects/pycbc/test_hm/log/real_o3.err
+output = /work/cameron.mills/projects/pycbc/test_hm/log/real_o3.out
+notification = never
+queue 1
