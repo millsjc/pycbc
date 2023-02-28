@@ -28,3 +28,7 @@ test_hm/TESTING-512.hdf
 *.hdf5
 *.gwf
 *.hdf
+test_hm/playground/multi_inspiral_dev/.ipynb_checkpoints/More_optimization_idx_combinations-checkpoint.ipynb
+test_hm/playground/multi_inspiral_dev/.ipynb_checkpoints/timeslides-checkpoint.ipynb
+test_hm/missedfound
+test_hm/error.sh
