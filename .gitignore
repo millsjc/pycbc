@@ -1,4 +1,4 @@
-test_hm/submissions/atlas*
+test_hm/submissions/scripts/atlas*
 *.~
 *.c*
 *.so
@@ -34,3 +34,4 @@ test_hm/playground/multi_inspiral_dev/.ipynb_checkpoints/timeslides-checkpoint.i
 test_hm/missedfound
 test_hm/error.sh
 test_hm/coinc.sh
+test_hm/submissions/scripts/atlas_real_o3.sh
