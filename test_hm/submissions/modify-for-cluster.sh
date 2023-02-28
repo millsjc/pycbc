@@ -19,3 +19,5 @@ sed -i.bak 's|#FRAME_COMMAND="--frame-type H1:${h1frame} L1:${l1frame} V1:${v1fr
 # Modify processing scheme
 sed -i.bak 's/--processing-scheme [[:alnum:]]*/--processing-scheme mkl/g' atlas_real_o3.sh
 
+mv atlas_real_o3.sh scripts/atlas_real_o3.sh
+

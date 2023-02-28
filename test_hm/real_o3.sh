@@ -35,5 +35,6 @@ $FRAME_COMMAND \
 --output $WD/inspiral/$OUTFILE \
 --bank-file $WD/bank/$BANKFILE \
 --instruments H1 L1 V1 \
---coinc-threshold 7.0 --verbose --num-timeslides 1 \
+--coinc-threshold 7.0 --verbose \
+--num-timeslides 0 \
 --injection-file $WD/inj/$INJFILE

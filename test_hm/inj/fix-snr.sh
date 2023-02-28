@@ -19,7 +19,7 @@ END
 
 else
     # Create a new file with the same contents
-    newfile="${injfile%.*}_snr_${fixed_snr}.${injfile##*.}"
+    newfile="${injfile%.*}_${fixed_snr}.${injfile##*.}"
     cp "$injfile" "$newfile"
     
     # Use Python script to modify distance columns in the new file
