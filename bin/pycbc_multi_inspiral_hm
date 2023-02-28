@@ -34,7 +34,6 @@ from pycbc.events import EventManagerHM, hm_utils, threshold_only
 from pycbc.filter import MatchedFilterControlHM
 from pycbc.types import zeros, float32, complex64
 from pycbc import __version__
-# import pdb
 
 # from pycbc.vetoes import sgchisq
 time_init = time.time()
