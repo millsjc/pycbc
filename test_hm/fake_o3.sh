@@ -12,8 +12,8 @@ v1chan=V1:GWOSC-4KHZ_R1_STRAIN
 h1frame=H1_GWOSC_O3b_4KHZ_R1
 l1frame=L1_GWOSC_O3b_4KHZ_R1
 v1frame=V1_GWOSC_O3b_4KHZ_R1
-#WD=/work/cameron.mills/projects/pycbc/test_hm
-WD=/Users/camill/projects/pycbc/test_hm
+WD=/work/cameron.mills/projects/pycbc/test_hm
+#WD=/Users/camill/projects/pycbc/test_hm
 pycbc_multi_inspiral_hm \
 --fake-strain 'zeroNoise' \
 --allow-zero-padding \
