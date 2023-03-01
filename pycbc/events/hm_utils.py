@@ -3,19 +3,25 @@ harmonic 2-filter triggers.
 """
 from math import ceil
 
+import h5py
+
 import numpy as np
 from numba import njit
 
 from pycbc import detector
+from pycbc import events
 
-TQDM_BAR_FORMAT = ("{desc}: |{bar}| "
-                   "{n_fmt}/{total_fmt} {unit} ({percentage:3.0f}%) "
-                   "[{elapsed} | ETA {remaining}]{postfix}")
+TQDM_BAR_FORMAT = (
+    "{desc}: |{bar}| "
+    "{n_fmt}/{total_fmt} {unit} ({percentage:3.0f}%) "
+    "[{elapsed} | ETA {remaining}]{postfix}"
+)
 TQDM_KW = {
     "ascii": " -=#",
     "bar_format": TQDM_BAR_FORMAT,
     "smoothing": 0.05,
 }
+
 
 def angle_between_detectors(tau_12, tau_13, tau_23):
     """Calculate the angle between ifo2 and ifo3 viewed from ifo1.
@@ -53,27 +59,29 @@ def get_coincident_window(ifo_list, timing_error, sample_rate):
         ifo1 = detector.Detector(ifo_list[0])
         ifo2 = detector.Detector(ifo_list[1])
         time_diff_12 = ifo1.light_travel_time_to_detector(ifo2)
-        t2_coinc_window = int(ceil((time_diff_12 + timing_error) 
-                                   * sample_rate))
+        t2_coinc_window = int(ceil((time_diff_12 + timing_error) * sample_rate))
         segment_overlap = t2_coinc_window
         if nifo > 2:
             ifo3 = detector.Detector(ifo_list[2])
             time_diff_13 = ifo1.light_travel_time_to_detector(ifo3)
             time_diff_23 = ifo2.light_travel_time_to_detector(ifo3)
             if time_diff_12 > time_diff_13:
-                # FIXME: consider switching labels, ifo_list order and 
+                # FIXME: consider switching labels, ifo_list order and
                 # anything else necessary to force this condition
-                raise NotImplementedError("t3_coinc_window must be "
-                                          "larger than t2_coinc window.")
-            alpha_23 = angle_between_detectors(time_diff_12, time_diff_13,
-                                               time_diff_23)
-            t3_coinc_window = int(ceil((time_diff_13 + timing_error) 
-                                       * sample_rate))
-            t23_coinc_window = int(ceil((time_diff_23 + timing_error) 
-                                        * sample_rate))
+                raise NotImplementedError(
+                    "t3_coinc_window must be " "larger than t2_coinc window."
+                )
+            alpha_23 = angle_between_detectors(time_diff_12, time_diff_13, time_diff_23)
+            t3_coinc_window = int(ceil((time_diff_13 + timing_error) * sample_rate))
+            t23_coinc_window = int(ceil((time_diff_23 + timing_error) * sample_rate))
             segment_overlap = max(segment_overlap, t3_coinc_window)
-    return (t2_coinc_window, t3_coinc_window, segment_overlap, 
-            alpha_23, t23_coinc_window)
+    return (
+        t2_coinc_window,
+        t3_coinc_window,
+        segment_overlap,
+        alpha_23,
+        t23_coinc_window,
+    )
 
 
 def check_time_delay_is_physical(n2, n3, N2, N3, alpha_23):
@@ -149,14 +157,13 @@ def number_tail(t2_coinc_window, t3_coinc_window):
         * (t3_coinc_window + 1 + np.arange(0, t2_coinc_window + 1))
     ) + sum(
         (2 * t2_coinc_window + 1)
-        * (t3_coinc_window + 1 + np.arange(t2_coinc_window + 1, 
-                                           t3_coinc_window + 1))
+        * (t3_coinc_window + 1 + np.arange(t2_coinc_window + 1, t3_coinc_window + 1))
     )
     return n_tail
 
 
 def number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window):
-    """Assumes t3_coinc_window>t2_coinc_window, and tlen is the number 
+    """Assumes t3_coinc_window>t2_coinc_window, and tlen is the number
     of time samples.
     """
     n_tail = number_tail(t2_coinc_window, t3_coinc_window)
@@ -171,13 +178,12 @@ def get_i_j_k(
     coinc_idx, tlen, t2_coinc_window, t3_coinc_window, precalculated_idxs=None
 ):
     """Get the indices i,j,k of the detector timeseries corresponding to
-    coincident index coinc_idx. Assumes 3 detectors, t3_coinc_window 
+    coincident index coinc_idx. Assumes 3 detectors, t3_coinc_window
     > t2_coinc_window, and tlen is the number of analyzed time samples.
     """
     if coinc_idx < 0:
         raise ValueError("indices cannot be negative.")
-    n_c = number_coincident_combinations(tlen, t2_coinc_window, 
-                                         t3_coinc_window)
+    n_c = number_coincident_combinations(tlen, t2_coinc_window, t3_coinc_window)
     n_tail = number_tail(t2_coinc_window, t3_coinc_window)
     largest_window = max(t2_coinc_window, t3_coinc_window)
     T_2 = 2 * t2_coinc_window + 1
@@ -223,9 +229,10 @@ def max_number_timeslides(
     return int(n_slides)
 
 
-def perform_timeslide(idx_onsource, slide_no, t2_coinc_window, 
-                      t3_coinc_window, t23_coinc_window):
-    """Returns a copy of idx_combinations with the time indexes slid 
+def perform_timeslide(
+    idx_onsource, slide_no, t2_coinc_window, t3_coinc_window, t23_coinc_window
+):
+    """Returns a copy of idx_combinations with the time indexes slid
     so they are no longer coincident"""
     idx = idx_onsource.copy()
     nifo = np.shape(idx)[-1]
@@ -259,8 +266,7 @@ def two_det_sum_idx_jit(t1, t2, idx):
 
 def get_index_array_dtype(max_index):
     # reduce the size of the index array where possible
-    bits_dtypes = [(8, np.uint8), (16, np.uint16),
-                   (32, np.uint32), (64, np.uint64)]
+    bits_dtypes = [(8, np.uint8), (16, np.uint16), (32, np.uint32), (64, np.uint64)]
     for bits, dtype in bits_dtypes:
         if 2**bits > max_index + 1:
             break
@@ -268,16 +274,17 @@ def get_index_array_dtype(max_index):
 
 
 @njit
-def get_indices_jit_3_ifo(tlen, t2_coinc_window,
-                          t3_coinc_window, dtype=np.int64):
+def get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
     idx = np.array(
         [
             [i, j, k]
             for i in range(tlen)
-            for j in range(max(i - t2_coinc_window, 0), 
-                           min(tlen, i + t2_coinc_window + 1))
-            for k in range(max(i - t3_coinc_window, 0), 
-                           min(tlen, i + t3_coinc_window + 1))
+            for j in range(
+                max(i - t2_coinc_window, 0), min(tlen, i + t2_coinc_window + 1)
+            )
+            for k in range(
+                max(i - t3_coinc_window, 0), min(tlen, i + t3_coinc_window + 1)
+            )
         ],
         dtype=dtype,
     )
@@ -290,26 +297,25 @@ def get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype=np.int64):
         [
             [i, j]
             for i in range(tlen)
-            for j in range(max(i - t2_coinc_window, 0), 
-                           min(tlen, i + t2_coinc_window + 1))
+            for j in range(
+                max(i - t2_coinc_window, 0), min(tlen, i + t2_coinc_window + 1)
+            )
         ],
         dtype=dtype,
     )
     return idx
 
 
-def index_combinations(tlen, t2_coinc_window, t3_coinc_window, 
-                       dtype=np.int64):
-    """For three detectors, this is equivalent to calling 
-    get_indices_jit_3_ifo, but is generally faster. For 
-    two detectors this just calls get_indices_jit_2_ifo 
+def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
+    """For three detectors, this is equivalent to calling
+    get_indices_jit_3_ifo, but is generally faster. For
+    two detectors this just calls get_indices_jit_2_ifo
     directly.
     """
     if t3_coinc_window is None:
         return get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype)
     elif 2 * max(t2_coinc_window, t3_coinc_window) > tlen:
-        return get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window,
-                                     dtype)
+        return get_indices_jit_3_ifo(tlen, t2_coinc_window, t3_coinc_window, dtype)
     # forgetting the tails at first
     largest_window = max(t2_coinc_window, t3_coinc_window)
     idx_1_mid = (
@@ -330,8 +336,7 @@ def index_combinations(tlen, t2_coinc_window, t3_coinc_window,
         (tlen - 2 * (t3_coinc_window + 1)) * (2 * t2_coinc_window + 1),
     )
     idx_1_ends, idx_2_ends, idx_3_ends = get_indices_jit_3_ifo(
-        2 * (t3_coinc_window + 1), t2_coinc_window, t3_coinc_window,
-        dtype=dtype
+        2 * (t3_coinc_window + 1), t2_coinc_window, t3_coinc_window, dtype=dtype
     ).T
     # now get the tails
     n_start = int(len(idx_1_ends) / 2)
@@ -381,8 +386,7 @@ def detector_sum_and_threshold(snr_2_filt_rss, idx, threshold):
     dtype = get_index_array_dtype(np.max(idx))
     if nifos == 3:
         network_snr_sq = three_det_sum_idx_jit(
-            snr_2_filt_rss[0], snr_2_filt_rss[1], snr_2_filt_rss[2],
-            idx.astype(dtype)
+            snr_2_filt_rss[0], snr_2_filt_rss[1], snr_2_filt_rss[2], idx.astype(dtype)
         )
     elif nifos == 2:
         network_snr_sq = two_det_sum_idx_jit(
@@ -393,7 +397,7 @@ def detector_sum_and_threshold(snr_2_filt_rss, idx, threshold):
 
 
 def inner_complex(a, b):
-    """Assumes a 2D array of detector SNRs where zeroth index selects a 
+    """Assumes a 2D array of detector SNRs where zeroth index selects a
     detector.
     """
     return abs(np.sum(a * b.conjugate(), axis=0))
@@ -508,8 +512,7 @@ def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
         The indices that maximize the snr.
     """
     nifos = np.shape(det_idx)[-1]
-    i_max = [maximal_coinc_in_ifo(snrs, det_idx[:, 0],
-                                  check_sorted=check_sorted)]
+    i_max = [maximal_coinc_in_ifo(snrs, det_idx[:, 0], check_sorted=check_sorted)]
     snrs = snrs[i_max[0]]
     det_idx = det_idx[i_max[0]]
     for i in range(1, nifos):
@@ -527,6 +530,7 @@ def maximize_snr_per_timepoint(snrs, det_idx, check_sorted=True):
 
 # -- I/O utilities ----------------------------------
 
+
 def read_hdf5_triggers(inputfiles, verbose=False):
     """Load several HDF5 trigger files into a single dictionary.
 
@@ -538,11 +542,12 @@ def read_hdf5_triggers(inputfiles, verbose=False):
     import re
     from collections import defaultdict
     import h5py
+
     NETWORK_IFO_EVENT_ID_REGEX = re.compile(
-    r"\Anetwork/(?P<ifo>[A-Z]1)_event_id\Z",
+        r"\Anetwork/(?P<ifo>[A-Z]1)_event_id\Z",
     )
     EVENT_ID_REGEX = re.compile(r"event_id\Z")
-    
+
     datasets = {}
 
     def _scan_dataset(name, obj):
@@ -555,68 +560,113 @@ def read_hdf5_triggers(inputfiles, verbose=False):
         except KeyError:
             pass
         else:
-            assert dtype == datasets[name][1], (
-                "Cannot merge {0}/{1}, does not match dtype".format(
-                    obj.file.filename, name,
-                ))
+            assert (
+                dtype == datasets[name][1]
+            ), "Cannot merge {0}/{1}, does not match dtype".format(
+                obj.file.filename,
+                name,
+            )
         datasets[name] = (shape, dtype)
 
     # get list of datasets
     datasets = {}
     for filename in inputfiles:
-        with h5py.File(filename, 'r') as h5f:
+        with h5py.File(filename, "r") as h5f:
             h5f.visititems(_scan_dataset)
 
     position = defaultdict(int)
     ifo_eventid_increment = defaultdict(int)
-    
+
     out = defaultdict(lambda: defaultdict(dict))
 
     # create datasets
     for dset, (shape, dtype) in datasets.items():
         prefix = dset.split("/")[0]
-        key = dset[len(prefix)+1:]
+        key = dset[len(prefix) + 1 :]
         out[prefix][key] = np.empty(shape, dtype=dtype)
 
     # copy dataset contents
     for filename in inputfiles:
-        with h5py.File(filename, 'r') as h5in:
+        with h5py.File(filename, "r") as h5in:
             for dset in datasets:
                 data = h5in[dset][:]
                 size = data.shape[0]
                 pos = position[dset]
                 prefix = dset.split("/")[0]
-                key = dset[len(prefix)+1:]
-                
+                key = dset[len(prefix) + 1 :]
+
                 if EVENT_ID_REGEX.search(dset):
                     if NETWORK_IFO_EVENT_ID_REGEX.search(dset):
                         # must increment eventids differently in this case
                         ifo_eid_key = "{}/{}_{}".format(*dset[8:].split("_"))
                         ifo_eid_incr = ifo_eventid_increment[ifo_eid_key]
-                        out[prefix][key][pos:pos+size] = data + ifo_eid_incr
+                        out[prefix][key][pos : pos + size] = data + ifo_eid_incr
                         ifo_eid_size = h5in[ifo_eid_key].shape[0]
                         ifo_eventid_increment[ifo_eid_key] += ifo_eid_size
                     else:
-                        out[prefix][key][pos:pos+size] = data + pos
+                        out[prefix][key][pos : pos + size] = data + pos
                 else:
-                    out[prefix][key][pos:pos+size] = data
+                    out[prefix][key][pos : pos + size] = data
                 position[dset] += size
     return dict(out)
 
+
 def read_segment_files(segfiles):
     import operator
+
     try:
         from functools import reduce
     except ImportError:  # python < 2
         pass
-    from ligo.segments import segmentlist   
+    from ligo.segments import segmentlist
     from ligo.segments.utils import fromsegwizard
 
     def _read(name):
         with open(name, "r") as f:
             return fromsegwizard(f)
 
-    return segmentlist(reduce(
-        operator.or_,
-        map(_read, segfiles),
-        segmentlist()))
+    return segmentlist(reduce(operator.or_, map(_read, segfiles), segmentlist()))
+
+
+def indices_from_eventids(net_ifo_eid, ifo_eid):
+    # spot check that eventids correspond to the index of the array.
+    # NB: This should already be the case, but just in case...
+    if net_ifo_eid[-1] != ifo_eid[-1]:
+        # if not, find the next matching index
+        net_ifo_eid = [
+            next(i for i, _ in enumerate(ifo_eid) if i == eid) for eid in net_ifo_eid
+        ]
+    return net_ifo_eid
+
+
+def calculate_mean_ifo_time(triggers):
+    """Approximates geocent time as the mean ifo time.
+
+    Parameters
+    ----------
+    triggers : dict
+        A dictionary containing trigger information; should have "network" and the ifos as keys.
+
+    Returns
+    -------
+    geocent_time : ndarray
+        An array of geocent times for each event.
+    """
+    ifo_list = [k for k in triggers.keys() if k != "network"]
+    ifo_times = {}
+    for ifo in ifo_list:
+        net_ifo_eid = triggers["network"]["{}_event_id".format(ifo)]
+        ifo_eid = triggers[ifo]["event_id"]
+        net_ifo_eid = indices_from_eventids(net_ifo_eid, ifo_eid)
+        # hack below to be deal with case triggers is a h5py.Dataset object
+        if isinstance(net_ifo_eid, h5py.Dataset):
+            ifo_times[ifo] = triggers[ifo]["end_time"][:][net_ifo_eid]
+        else:
+            ifo_times[ifo] = triggers[ifo]["end_time"][net_ifo_eid]
+    geocent_time = np.asarray(
+        [
+            events.mean_if_greater_than_zero(v)[0]
+            for v in np.array(list(ifo_times.values())).T
+        ]
+    )
+    return geocent_time

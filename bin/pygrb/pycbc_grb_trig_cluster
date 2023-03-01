@@ -17,7 +17,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-"""Cluster triggers from a pyGRB run
+"""Cluster triggers from a pyGRB or pycbc_multi_inspiral_hm run
 """
 
 import argparse
@@ -36,6 +36,7 @@ from gwdatafind.utils import filename_metadata
 
 from pycbc import __version__
 from pycbc import init_logging
+from pycbc.events import hm_utils
 
 __author__ = "Duncan Macleod <duncan.macleod@ligo.org>"
 
@@ -103,6 +104,18 @@ def slice_hdf5(inputfile, outfile, include, verbose=False):
         if verbose:
             print("Slice written to {}".format(outfile))
 
+def get_network_time(h5f):
+    """Allows for use cases where we don't have sky position and instead 
+    use mean ifo time to cluster
+    """
+    net = h5f["network"]
+    if "end_time_gc" in net.keys():
+        time = net["end_time_gc"][()]
+    elif "mean_time" in net.keys():
+        time = net["mean_time"][()]
+    else:
+        time = hm_utils.calculate_mean_ifo_time(h5f)
+    return time
 
 # -- parse command line -------------------------
 
@@ -181,9 +194,10 @@ loudtime = numpy.zeros(nbins)
 clusters = []
 
 # -- cluster ------------------------------------
-
+    
 with h5py.File(args.trig_file, "r") as h5f:
-    time = h5f["network"]["end_time_gc"][()]
+    # time = h5f["network"]["end_time_gc"][()]
+    time = get_network_time(h5f)
     snr = h5f["network"][args.rank_column][()]
 
 # empty file (no triggers), so just copy the file

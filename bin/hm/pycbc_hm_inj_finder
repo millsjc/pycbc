@@ -43,7 +43,7 @@ from pycbc import __version__, events
 from pycbc.inject import InjectionSet
 from pycbc.io import FieldArray, WaveformArray
 from pycbc.events.hm_utils import (
-    TQDM_KW, read_hdf5_triggers, read_segment_files)
+    TQDM_KW, read_hdf5_triggers, read_segment_files, indices_from_eventids, calculate_mean_ifo_time)
 
 __author__ = "Cameron Mills <cameron.mills@aei.mpg.de>"
 
@@ -57,15 +57,6 @@ def find_split_files(filelist, split):
     for fn in filelist:
         if (split is None and 'SPLIT' not in fn) or split in fn:
             yield fn
-
-def indices_from_eventids(net_ifo_eid, ifo_eid):
-    # spot check that eventids correspond to the index of the array.
-    # NB: This should already be the case, but just in case...
-    if net_ifo_eid[-1] != ifo_eid[-1]:
-        # if not, find the next matching index
-        net_ifo_eid = [next(i for i, _ in enumerate(ifo_eid) 
-                            if i == eid) for eid in net_ifo_eid]
-    return net_ifo_eid
 
 @singledispatch
 def take(injections, keep: numpy.ndarray):
@@ -229,19 +220,9 @@ with tqdm.tqdm(args.inj_files, desc="Finding injections",
 
         # read triggers
         triggers = read_hdf5_triggers(trigfiles)
-                
+        
         # use the mean ifo time to approximate geocent time. 
-        ifo_list = [k for k in triggers.keys() if k != "network"]
-        ifo_times = {}
-        for ifo in ifo_list:
-            net_ifo_eid = triggers["network"]["{}_event_id".format(ifo)]
-            ifo_eid = triggers[ifo]["event_id"]
-            # eventids should correspond to indices, but just in case..
-            net_ifo_eid = indices_from_eventids(net_ifo_eid, ifo_eid)
-            ifo_times[ifo] = triggers[ifo]["end_time"][net_ifo_eid]
-        time = numpy.asarray([
-            events.mean_if_greater_than_zero(v)[0] 
-                for v in numpy.array(list(ifo_times.values())).T])
+        time = calculate_mean_ifo_time(triggers)
 
         snr = triggers["network"][args.rank_column]
         event_id = triggers["network"]["event_id"]
@@ -280,6 +261,7 @@ with tqdm.tqdm(args.inj_files, desc="Finding injections",
         for col in triggers["network"]:
             trigs[col] = extend(trigs[col], triggers["network"][col][eids])
         # also save individual ifo info
+        ifo_list = [k for k in triggers.keys() if k != "network"]
         for ifo in ifo_list:
             net_ifo_eid = triggers["network"]["{}_event_id".format(ifo)][eids]
             ifo_eid = triggers[ifo]["event_id"]

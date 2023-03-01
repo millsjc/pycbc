@@ -102,6 +102,12 @@ class fw(object):
                                 compression_opts=9,
                                 shuffle=True)
 
+    def __getitem__(self, key):
+        return self.f[key]
+
+    def keys(self):
+        return list(self.f.keys())
+
 
 # The class below should serve as the parent for all schemed classes.
 # The intention is that this class serves simply as the location for
@@ -1013,6 +1019,12 @@ class EventManagerHM(EventManagerCoherent):
                                         [g[1] for g in gating_info[gate_type]])
                         f['gating/' + gate_type + '/pad'] = numpy.array(
                                         [g[2] for g in gating_info[gate_type]])
+        if len(network_events):
+            # Calculate the mean ifo time for the network events.
+            mean_time = hm_utils.calculate_mean_ifo_time(f)
+            f.prefix = "network"
+            f["mean_time"] = mean_time
+
 
 class EventManagerMultiDet(EventManagerMultiDetBase):
     def __init__(self, opt, ifos, column, column_types, psd=None, **kwargs):
