@@ -1,1 +1,0 @@
-/Users/camill/projects/pycbc/bin/hm/pycbc_hm_scatter_inj_results --inj-file MINI-TESTING-512-realdata-INJECTIONS-missedfound.hdf --bank-file bank/mini-bank.hdf --output-file ./figures/MINI-TESTING-512-realdata-INJECTIONS-missedfound.png

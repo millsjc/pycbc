@@ -23,8 +23,8 @@ import numpy as np
 # Set the figure size to 1.5 times the default size
 plt.rcParams["figure.figsize"] = [1.5 * f for f in plt.rcParams["figure.figsize"]]
 
-# Increase the size of all the fonts, labels, ticks, legends, and markers by a factor of 2
-font_increase = 2
+# Increase the size of all the fonts, labels, ticks, legends, and markers by a factor of 1.5
+font_increase = 1.5
 label_size = "large"
 plt.rcParams.update({
     'font.size': font_increase*plt.rcParams['font.size'],

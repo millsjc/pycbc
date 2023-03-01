@@ -132,7 +132,7 @@ parser.add_argument(
 # input/output
 parser.add_argument(
     "-f",
-    "--input-files",
+    "--trig-files",
     nargs="+",
     help="path(s) to input trigger file(s)",
 )
@@ -144,8 +144,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "-o",
-    "--output-file",
-    help="output filename.",
+    "--output-dir",
+    default=os.getcwd(),
+    help="output directory (default: %(default)s)",
 )
 parser.add_argument(
     "-i",
@@ -208,7 +209,7 @@ with tqdm.tqdm(args.inj_files, desc="Finding injections",
             split, = SPLIT_FILENAME.search(injf).groups()
         except AttributeError:  # no regex match
             split = None
-        trigfiles = list(find_split_files(args.input_files, split))
+        trigfiles = list(find_split_files(args.trig_files, split))
 
         # read injections and filter by exclude segments
         tmpinj = InjectionSet(injf).table
@@ -293,8 +294,21 @@ if isinstance(allinjections, lsctables.SimInspiralTable):
         allinjections,
         cast_to_dtypes={x[0]: x for x in dtypes.items()},
     )
+    
+# prepare output hdf5 file
+ifotag, desc, segment = filename_metadata(args.trig_files[0])
+desc = SPLIT_FILENAME.split(desc)[0]
+outfilename = os.path.join(
+    args.output_dir,
+    "{}-{}_FOUNDMISSED-{}-{}.h5".format(
+        args.ifo_tag or ifotag,
+        desc,
+        segment[0],
+        abs(segment),
+    ),
+)
 
-with h5py.File(args.output_file, "w") as h5out:
+with h5py.File(outfilename, "w") as h5out:
     # write injections from recarray
     for name, injlist in (("found", found), ("missed", missed)):
         grp = h5out.create_group(name)
@@ -317,4 +331,4 @@ with h5py.File(args.output_file, "w") as h5out:
         )
 
 if args.verbose:
-    print("Found/missed written to {}".format(args.output_file))
+    print("Found/missed written to {}".format(outfilename))

@@ -7,15 +7,7 @@ inplace=$3
 
 if [ "$inplace" = "--inplace" ]; then
     # Use Python script to modify distance columns in-place
-    python << END
-import h5py
-
-with h5py.File("$injfile", "r+") as f:
-    fixed_snr = $fixed_snr
-    for key in f.keys():
-        if "distance" in key or "snr" in key:
-            f[key][()] = fixed_snr / f["network_optimal_snr"][()] * f[key][()]
-END
+    python fix_snr.py --injfile $injfile --fixed-snr $fixed_snr
 
 else
     # Create a new file with the same contents
@@ -23,15 +15,7 @@ else
     cp "$injfile" "$newfile"
     
     # Use Python script to modify distance columns in the new file
-    python << END
-import h5py
-
-with h5py.File("$newfile", "r+") as f:
-    fixed_snr = $fixed_snr
-    for key in f.keys():
-        if "distance" in key or "snr" in key:
-            f[key][()] = fixed_snr / f["network_optimal_snr"][()] * f[key][()]
-END
+    python fix_snr.py --injfile $newfile --fixed-snr $fixed_snr
     
     # Print the name of the new file
     echo "Created new file: $newfile"
