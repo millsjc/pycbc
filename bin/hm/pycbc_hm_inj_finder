@@ -223,7 +223,10 @@ with tqdm.tqdm(args.inj_files, desc="Finding injections",
         triggers = read_hdf5_triggers(trigfiles)
         
         # use the mean ifo time to approximate geocent time. 
-        time = calculate_mean_ifo_time(triggers)
+        if "mean_time" in triggers["network"].keys():
+            time = triggers["network"]["mean_time"]
+        else:
+            time = calculate_mean_ifo_time(triggers)
 
         snr = triggers["network"][args.rank_column]
         event_id = triggers["network"]["event_id"]

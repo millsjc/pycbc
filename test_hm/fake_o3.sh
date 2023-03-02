@@ -1,9 +1,10 @@
 DESC='MULTIINSPIRAL_HM_fakedata_512_512s'
-INJFILE='mini-bbh-3dets-5mins.hdf'
+INJFILE='mini-bbh-3dets-512s.hdf'
 #GPS_START=1267732868
 #GPS_START=1267735956
-GPS_START=1267736456
-GPS_END=1267736468
+PAD=2
+GPS_START=$((1267735956-${PAD}))
+GPS_END=$((1267736468-${PAD}))
 DURATION=$(($GPS_END-$GPS_START))
 OUTFILE="H1L1V1-${DESC}-${GPS_START}-${DURATION}.hdf"
 #BANKFILE='full-correct-tau-xhm-spinning-2filter-listharms.hdf'
@@ -34,20 +35,6 @@ pycbc_multi_inspiral_hm \
 --output $WD/inspiral/$OUTFILE \
 --bank-file $WD/bank/$BANKFILE \
 --instruments H1 L1 V1 \
---coinc-threshold 7.0 --verbose --num-timeslides 0
-
-#--injection-file $WD/inj/$INJFILE \
-#--psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 \
-#--frame-type H1:${h1frame} L1:${l1frame} V1:${v1frame} \
-
-#--psd-model H1:aLIGOaLIGOO3LowT1800545 L1:aLIGOaLIGOO3LowT1800545 V1:aLIGOAdVO3LowT1800545 \
-# --fake-strain 'zeroNoise' \
-#--bank-file bank/full-correct-tau-xhm-spinning-2filter-listharms.hdf \
-#--bank-file inj/bbh-3dets_bank.hdf \
-#--bank-file GW190521_template.hdf \
-#--injection-file H1:injection.xml L1:injection.xml V1:injection.xml \
-#--ra 0.644911865031637 \
-#--dec 0.810795263791696 --trigger-time 1187008882 \
-#--gps-start-time 1187008374 --gps-end-time 1187008886 \
-#1187008860 --gps-end-time 1187008886
-
+--coinc-threshold 7.0 --verbose \
+--num-timeslides 0 \
+--injection-file $WD/inj/$INJFILE
