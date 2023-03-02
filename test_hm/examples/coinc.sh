@@ -1,0 +1,1 @@
+pycbc_coinc_findtrigs --coinc-threshold 0.001 --ranking-statistic quadsum --sngl-ranking newsnr  --timeslide-interval 0.1 --template-bank bank/mini-bank.hdf --trigger-files inspiral/INSP-H1-MINI-TESTING-512-5mins-realdata-INJECTIONS.hdf --output-file coinc.hdf
