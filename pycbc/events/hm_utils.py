@@ -589,6 +589,13 @@ def read_hdf5_triggers(inputfiles, verbose=False):
     for filename in inputfiles:
         with h5py.File(filename, "r") as h5in:
             for dset in datasets:
+                # if dset == "network/H1_event_id":
+                    # breakpoint()
+                # try:
+                #     data = h5in[dset][:]
+                # except OSError: #file corrrupted in a  specific column
+                #     print("WARNING: column {} in {} is likely corrupted, skipping this column.".format(filename, dset))
+                #     continue
                 data = h5in[dset][:]
                 size = data.shape[0]
                 pos = position[dset]
