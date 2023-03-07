@@ -305,9 +305,34 @@ def get_indices_jit_2_ifo(tlen, t2_coinc_window, dtype=np.int64):
     )
     return idx
 
+    
+def index_combinations(
+    tlen: int,
+    t2_coinc_window: float,
+    t3_coinc_window=None,
+    dtype: np.dtype = np.int64,
+) -> np.ndarray:
+    """Generate all possible index combinations for given coincidence windows
 
-def index_combinations(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
-    """For three detectors, this is equivalent to calling
+    Parameters
+    ----------
+    tlen : int
+        Length of time array
+    t2_coinc_window : int
+        Width in indices of coincidence window between detectors 1 and 2
+    t3_coinc_window : int, optional
+        Width in indices of coincidence window between detectors 1 and 3, default None
+    dtype : np.dtype
+        Data type to use for arrays (default: np.int64)
+
+    Returns
+    -------
+    idx : np.ndarray
+        All possible index combinations
+    
+    Notes
+    -----
+    For three detectors, this is equivalent to calling
     get_indices_jit_3_ifo, but is generally faster. For
     two detectors this just calls get_indices_jit_2_ifo
     directly.
