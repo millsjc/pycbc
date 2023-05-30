@@ -35,3 +35,6 @@ test_hm/missedfound
 test_hm/error.sh
 test_hm/coinc.sh
 test_hm/submissions/scripts/atlas_real_o3.sh
+test_hm/inj/.ipynb_checkpoints/check_XHM_time_domain-checkpoint.ipynb
+*checkpoint*
+test_hm/playground/multi_inspiral_dev/indices_speedup/media/*

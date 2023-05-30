@@ -1,6 +1,6 @@
 import ctypes
 import numpy as np
-from numba import njit
+from numba import njit, prange
 import argparse
 import time
 import memory_profiler
@@ -56,6 +56,21 @@ def get_indices_3_ifo_3(tlen, t2_coinc_window, t3_coinc_window, num_combinations
     get_indices.restype = None
     get_indices(tlen, t2_coinc_window, t3_coinc_window, idx, num_combinations)
 
+    return idx
+
+@njit(parallel=True)
+def get_indices_3_ifo_2(tlen, t2_coinc_window, t3_coinc_window, num_combinations, dtype=np.int64):
+    idx = np.empty((num_combinations, 3), dtype=dtype)
+    row_num = 0
+    for i in prange(tlen):
+        for j in prange(
+            max(i - t2_coinc_window, 0), min(tlen, i + t2_coinc_window + 1)
+        ):
+            for k in prange(
+                max(i - t3_coinc_window, 0), min(tlen, i + t3_coinc_window + 1)
+            ):
+                idx[row_num] = [i, j, k]
+                row_num += 1
     return idx
 
 # Measure the time and memory usage of the first implementation
