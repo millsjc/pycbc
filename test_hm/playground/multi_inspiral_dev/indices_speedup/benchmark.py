@@ -46,16 +46,18 @@ def get_indices_3_ifo_2(tlen, t2_coinc_window, t3_coinc_window, num_combinations
 
 
 def get_indices_3_ifo_3(tlen, t2_coinc_window, t3_coinc_window, num_combinations, dtype=np.int64):
-    # Load the shared library containing the C function
-    lib = ctypes.cdll.LoadLibrary('./indices.so')
-    idx = np.empty((num_combinations, 3), dtype=dtype)
+    # # Load the shared library containing the C function
+    # lib = ctypes.cdll.LoadLibrary('./indices.so')
+    # idx = np.empty((num_combinations, 3), dtype=dtype)
 
-    # Call the C function
-    get_indices = lib.get_indices_3_ifo_forloop
-    get_indices.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, np.ctypeslib.ndpointer(dtype=np.int64, shape=(num_combinations, 3)), ctypes.c_int64]
-    get_indices.restype = None
-    get_indices(tlen, t2_coinc_window, t3_coinc_window, idx, num_combinations)
-
+    # # Call the C function
+    # get_indices = lib.get_indices_3_ifo_forloop
+    # get_indices.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, np.ctypeslib.ndpointer(dtype=np.int64, shape=(num_combinations, 3)), ctypes.c_int64]
+    # get_indices.restype = None
+    # get_indices(tlen, t2_coinc_window, t3_coinc_window, idx, num_combinations)
+    
+    idx = get_indices_3_ifo_1(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64)
+    
     return idx
 
 @njit(parallel=True)
@@ -95,6 +97,7 @@ mem3_end = memory_profiler.memory_usage()[0]
 t3_end = time.perf_counter()
 
 # Check if the outputs of all implementations are the same
+
 if (indices_1 == indices_2)&(indices_2 == indices_3).all():
     print("The outputs of all implementations are the same, e.g. see the first 3 indices:")
 else:
