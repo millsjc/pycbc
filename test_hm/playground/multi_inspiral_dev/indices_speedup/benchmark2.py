@@ -4,11 +4,44 @@ BUT get_indices_3_ifo_3 is identical in speed and memory usage, but currently on
 
 TRY: https://pythonspeed.com/articles/speeding-up-numba/
 '''
-import itertools
+from contextlib import contextmanager
 import numpy as np
-from numba import njit, prange
+from numba import njit
 import time
 import memory_profiler
+from subprocess import Popen
+from os import getpid
+from time import sleep
+from signal import SIGINT
+
+from num_combinations import number_coincident_combinations_parts
+
+# define a context manager to measure time and memory usage
+@contextmanager
+def measure_time_memory():
+    t1_start = time.perf_counter()
+    mem1_start = memory_profiler.memory_usage()[0]
+    yield # this is where the body of the with statement goes, equivalent to what happens between the __enter__ and __exit__ methods of a class that is used with the with statement
+    t1_stop = time.perf_counter()
+    mem1_stop = memory_profiler.memory_usage()[0]
+    print(
+        "Elapsed time: %.2f [s]" % (t1_stop - t1_start)
+    )
+    print(
+        "Memory used: %.2f [MiB]" % (mem1_stop - mem1_start)
+    )
+
+@contextmanager
+def perf_stat():
+    ''''Requires perf (Linux only) to be installed.'''
+    try:
+        p = Popen(["perf", "stat", "-p", str(getpid())])
+        sleep(0.5)
+        yield
+        p.send_signal(SIGINT)
+    except:
+        pass
+        
 
 @njit
 def get_indices_3_ifo_1(tlen, t2_coinc_window, t3_coinc_window, dtype=np.int64):
@@ -94,7 +127,6 @@ if __name__ == "__main__":
     
     dtype = np.dtype(args.dtype)
     
-    from num_combinations import number_coincident_combinations_parts
     n_tail, n_middle = number_coincident_combinations_parts(args.tlen, args.t2_coinc_window, args.t3_coinc_window)
     num_combinations = 2 * n_tail + n_middle
     print("Number of combinations: ", num_combinations)
@@ -108,29 +140,28 @@ if __name__ == "__main__":
     t_compilation_end = time.perf_counter()
     print("Time taken to compile the functions: ", t_compilation_end - t_compilation_start)
 
-    # Measure the time and memory usage of the first implementation
-    t1_start = time.perf_counter()
-    mem1_start = memory_profiler.memory_usage()[0]
-    indices_1 = get_indices_3_ifo_1(args.tlen, args.t2_coinc_window, args.t3_coinc_window, dtype=dtype)
-    mem1_end = memory_profiler.memory_usage()[0]
-    t1_end = time.perf_counter()
+    print("Implementation 1, get_indices_3_ifo_1:")
+    with measure_time_memory():
+        indices_1 = get_indices_3_ifo_1(args.tlen, args.t2_coinc_window, args.t3_coinc_window, dtype=dtype)
 
-    # Measure the time and memory usage of the second implementation
-    t2_start = time.perf_counter()
-    mem2_start = memory_profiler.memory_usage()[0]
-    indices_2 = get_indices_3_ifo_2(args.tlen, args.t2_coinc_window, args.t3_coinc_window, num_combinations, dtype=dtype)
-    mem2_end = memory_profiler.memory_usage()[0]
-    t2_end = time.perf_counter()
+    with perf_stat():
+        indices_1 = get_indices_3_ifo_1(args.tlen, args.t2_coinc_window, args.t3_coinc_window, dtype=dtype)
+        
+    print("Implementation 2, get_indices_3_ifo_2:")
+    with measure_time_memory():
+        indices_2 = get_indices_3_ifo_2(args.tlen, args.t2_coinc_window, args.t3_coinc_window, num_combinations, dtype=dtype)
     
+    with perf_stat():
+        indices_2 = get_indices_3_ifo_2(args.tlen, args.t2_coinc_window, args.t3_coinc_window, num_combinations, dtype=dtype)
+        
     i_j_vals = product(np.arange(-args.t2_coinc_window, args.t2_coinc_window+1), np.arange(-args.t3_coinc_window, args.t3_coinc_window+1))
-    t3_start = time.perf_counter()
-    mem3_start = memory_profiler.memory_usage()[0]
-    # print(args.tlen, args.t3_coinc_window, i_j_vals, n_tail, n_middle)
-    indices_3 = get_indices_3_ifo_3(args.tlen, args.t3_coinc_window, i_j_vals, n_tail, n_middle, dtype=dtype)
-    mem3_end = memory_profiler.memory_usage()[0]
-    t3_end = time.perf_counter()
-
-
+    print("Implementation 3, get_indices_3_ifo_3:")
+    with measure_time_memory():
+        indices_3 = get_indices_3_ifo_3(args.tlen, args.t3_coinc_window, i_j_vals, n_tail, n_middle, dtype=dtype)
+    
+    with perf_stat():
+        indices_3 = get_indices_3_ifo_3(args.tlen, args.t3_coinc_window, i_j_vals, n_tail, n_middle, dtype=dtype)
+        
     # Check if the outputs of all implementations are the same
 
     if (indices_1 == indices_2).all() and (indices_1 == indices_3).all():
@@ -138,16 +169,8 @@ if __name__ == "__main__":
     else:
         print("The outputs of the implementations are different")
 
-    #check the end of the arrays are something sensible
+    # Check the end of the arrays are something sensible
     print(indices_1[-3:])
     print(indices_2[-3:])
     print(indices_3[-3:])
-
-    # Print the time and memory usage of both implementations
-    print("Time taken by implementation 1: ", t1_end - t1_start)
-    print("Memory used by implementation 1: ", mem1_end - mem1_start)
-    print("Time taken by implementation 2: ", t2_end - t2_start)
-    print("Memory used by implementation 2: ", mem2_end - mem2_start)
-    print("Time taken by implementation 3: ", t3_end - t3_start)
-    print("Memory used by implementation 3: ", mem3_end - mem3_start)
 
