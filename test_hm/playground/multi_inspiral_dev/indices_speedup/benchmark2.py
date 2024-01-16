@@ -113,7 +113,8 @@ def get_indices_3_ifo_3(tlen, t3_coinc_window, i_j_vals, n_tail, n_middle, dtype
 
 #     return idx
 
-if __name__ == "__main__":
+
+def get_parser():
     import argparse
     parser = argparse.ArgumentParser(description='Compute 3-IFO indices.')
     parser.add_argument('tlen', type=int, help='length of time series')
@@ -123,12 +124,24 @@ if __name__ == "__main__":
     # parser.add_argument('--n_tail', type=int, help='number of index combinations')
     # parser.add_argument('--n_middle', type=int, help='number of index combinations')
     parser.add_argument('--dtype', type=str, default='int64', help='data type of the indices')
+    return parser
+
+def check_args(args):
+    assert args.t2_coinc_window < args.t3_coinc_window, "t2_coinc_window must be less than t3_coinc_window"
+
+def get_num_combinations(tlen, t2_coinc_window, t3_coinc_window):
+    n_tail, n_middle = number_coincident_combinations_parts(tlen, t2_coinc_window, t3_coinc_window)
+    num_combinations = 2 * n_tail + n_middle
+    return n_tail,n_middle,num_combinations
+
+if __name__ == "__main__":
+    parser = get_args()
     args = parser.parse_args()
+    check_args(args)
     
     dtype = np.dtype(args.dtype)
     
-    n_tail, n_middle = number_coincident_combinations_parts(args.tlen, args.t2_coinc_window, args.t3_coinc_window)
-    num_combinations = 2 * n_tail + n_middle
+    n_tail, n_middle, num_combinations = get_num_combinations(args.tlen, args.t2_coinc_window, args.t3_coinc_window)
     print("Number of combinations: ", num_combinations)
 
     # Call all functions once to compile them
