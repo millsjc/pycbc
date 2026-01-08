@@ -38,3 +38,6 @@ test_hm/submissions/scripts/atlas_real_o3.sh
 test_hm/inj/.ipynb_checkpoints/check_XHM_time_domain-checkpoint.ipynb
 *checkpoint*
 test_hm/playground/multi_inspiral_dev/indices_speedup/media/*
+test_hm/playground/multi_inspiral_dev/indices_speedup/indices_mmap.dat
+test_hm/playground/multi_inspiral_dev/indices_speedup/indices.npy
+test_hm/playground/multi_inspiral_dev/indices_speedup/indices.joblib
